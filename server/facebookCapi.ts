@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { MetaSendResult, postMetaPayload } from "./metaCapi";
 
-type ConversionEventName = "PageView" | "Subscribe" | "Contact" | "CustomEvent";
+type ConversionEventName = "PageView" | "Subscribe" | "Contact" | "Lead" | "CustomEvent";
 
 export type ConversionPayload = {
   visitorId?: string;
@@ -52,6 +52,27 @@ function buildCustomData(eventName: ConversionEventName, payload: ConversionPayl
       content_category: "Contact privé Telegram",
       contact_source: payload.source || "button",
     };
+  }
+
+  if (eventName === "Lead") {
+    // Lead = high-intent CTA click on the landing page (user is heading to
+    // Telegram). Fired before the page unloads so Meta has an optimization
+    // signal even if the user never reaches /start in the bot.
+    const base: Record<string, unknown> = {
+      content_name: "Telegram Group CTA",
+      content_category: "Telegram",
+      lead_source: payload.source || "telegram_group_cta",
+      value: "0.00",
+      currency: "EUR",
+    };
+    if (payload.utmSource) base.utm_source = payload.utmSource;
+    if (payload.utmMedium) base.utm_medium = payload.utmMedium;
+    if (payload.utmCampaign) base.utm_campaign = payload.utmCampaign;
+    if (payload.utmContent) base.utm_content = payload.utmContent;
+    if (payload.utmTerm) base.utm_term = payload.utmTerm;
+    return payload.customData && Object.keys(payload.customData).length > 0
+      ? { ...base, ...payload.customData }
+      : base;
   }
 
   if (eventName === "CustomEvent") {
@@ -121,6 +142,10 @@ export async function sendSubscribe(payload: ConversionPayload = {}): Promise<Me
 
 export async function sendContact(payload: ConversionPayload = {}): Promise<MetaSendResult> {
   return sendCapiEvent("Contact", payload);
+}
+
+export async function sendLead(payload: ConversionPayload = {}): Promise<MetaSendResult> {
+  return sendCapiEvent("Lead", payload);
 }
 
 export async function sendScrollDepth(payload: ConversionPayload = {}): Promise<MetaSendResult> {

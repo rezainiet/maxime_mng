@@ -150,7 +150,13 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+const isProd = process.env.NODE_ENV === "production";
+
+// Manus dev tooling — never ship in production. Both inject scripts into the
+// HTML and the runtime adds ~thousands of lines of JS to the bundle.
+const devOnlyPlugins = isProd ? [] : [jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+
+const plugins = [react(), tailwindcss(), ...devOnlyPlugins];
 
 export default defineConfig({
   plugins,

@@ -150,10 +150,30 @@ type TelegramOverviewData = {
     joinedAfterStartCount: number;
     notJoinedCount: number;
   };
+  joins: TelegramJoinRow[];
   dailyReport: {
     conversionRate: string;
   };
   weeklyJoins: number;
+};
+
+type TelegramJoinRow = {
+  id: number;
+  telegramUserId: string;
+  telegramUsername: string | null;
+  telegramFirstName: string | null;
+  telegramLastName: string | null;
+  channelId: string;
+  channelTitle: string | null;
+  attributionStatus: "attributed_join" | "unattributed_join" | "bypass_join" | "legacy_unattributed";
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmContent: string | null;
+  fbclid: string | null;
+  metaEventSent: "pending" | "sent" | "failed" | "retrying" | "abandoned";
+  metaEventId: string | null;
+  joinedAt: string | Date;
 };
 
 type SubscriberLogRow = {
@@ -533,6 +553,89 @@ const SubscriberConversionRow = memo(function SubscriberConversionRow({ row }: {
       <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-800 pt-3">
         <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Reminders</span>
         <ReminderProgressionDots sentReminders={row.sentReminders} />
+      </div>
+    </div>
+  );
+});
+
+function attributionBadgeStyles(status: TelegramJoinRow["attributionStatus"]) {
+  if (status === "attributed_join") {
+    return {
+      label: "Attribué",
+      dot: "bg-emerald-400",
+      text: "text-emerald-300",
+      border: "border-emerald-500/30",
+      background: "bg-emerald-500/10",
+    } as const;
+  }
+  if (status === "bypass_join") {
+    return {
+      label: "Bypass (sans /start)",
+      dot: "bg-red-400",
+      text: "text-red-300",
+      border: "border-red-500/30",
+      background: "bg-red-500/10",
+    } as const;
+  }
+  return {
+    label: "Sans attribution",
+    dot: "bg-amber-300",
+    text: "text-amber-200",
+    border: "border-amber-400/30",
+    background: "bg-amber-400/10",
+  } as const;
+}
+
+function formatJoinIdentity(row: TelegramJoinRow) {
+  if (row.telegramUsername) return `@${row.telegramUsername}`;
+  const parts = [row.telegramFirstName, row.telegramLastName].filter(Boolean).join(" ").trim();
+  if (parts) return parts;
+  return `User ${row.telegramUserId}`;
+}
+
+function formatJoinAttribution(row: TelegramJoinRow) {
+  return [row.utmSource, row.utmMedium, row.utmCampaign]
+    .filter((value) => Boolean(value && value !== "—"))
+    .join(" · ");
+}
+
+const JoinedMemberRow = memo(function JoinedMemberRow({ row }: { row: TelegramJoinRow }) {
+  const badge = attributionBadgeStyles(row.attributionStatus);
+  const attribution = formatJoinAttribution(row);
+
+  return (
+    <div className="rounded-[18px] border border-slate-800 bg-slate-950/70 px-4 py-3">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-white">{formatJoinIdentity(row)}</p>
+          <p className="mt-1 truncate text-sm text-slate-400">
+            {row.channelTitle || "Canal"}
+            {attribution ? ` · ${attribution}` : ""}
+          </p>
+        </div>
+        <span
+          className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${badge.border} ${badge.background} ${badge.text}`}
+        >
+          <span className={`h-2 w-2 rounded-full ${badge.dot}`} /> {badge.label}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-slate-400 sm:grid-cols-3 lg:grid-cols-4">
+        <div>
+          <p className="uppercase tracking-[0.16em] text-slate-500">Rejoint le</p>
+          <p className="mt-1 text-sm text-slate-200">{formatDateTime(row.joinedAt)}</p>
+        </div>
+        <div>
+          <p className="uppercase tracking-[0.16em] text-slate-500">Campaign</p>
+          <p className="mt-1 truncate text-sm text-slate-200">{row.utmCampaign || "Direct / inconnu"}</p>
+        </div>
+        <div>
+          <p className="uppercase tracking-[0.16em] text-slate-500">Source</p>
+          <p className="mt-1 truncate text-sm text-slate-200">{row.utmSource || "—"}</p>
+        </div>
+        <div>
+          <p className="uppercase tracking-[0.16em] text-slate-500">User ID</p>
+          <p className="mt-1 truncate text-sm text-slate-200">{row.telegramUserId}</p>
+        </div>
       </div>
     </div>
   );
@@ -1389,6 +1492,27 @@ export default function Dashboard() {
                   ))
                 ) : (
                   <p className="text-sm text-slate-400">Aucun événement récent à afficher.</p>
+                )}
+              </div>
+            </Card>
+
+            <Card className="lg:col-span-12 border-emerald-500/40 bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.16),transparent_40%),#111827] shadow-[0_0_0_1px_rgba(34,197,94,0.10),0_0_30px_rgba(34,197,94,0.10)]">
+              <div className="flex items-center gap-2 text-amber-300">
+                <Users className="h-4 w-4 text-emerald-400" />
+                <h3 className="text-lg font-semibold tracking-[-0.03em]">Derniers membres rejoints</h3>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Utilisateurs qui ont effectivement rejoint le canal Telegram, avec leur statut d’attribution (via /start ou bypass), la campagne d’origine et l’heure exacte du join.
+              </p>
+              <div className="mt-4 space-y-3">
+                {telegramOverviewQuery.isLoading ? (
+                  <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/80 px-4 py-2 text-sm text-slate-300">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Chargement des membres rejoints...
+                  </div>
+                ) : telegramOverview && telegramOverview.joins && telegramOverview.joins.length > 0 ? (
+                  telegramOverview.joins.map((row) => <JoinedMemberRow key={row.id} row={row} />)
+                ) : (
+                  <p className="text-sm text-slate-400">Aucun membre n’a encore rejoint le canal.</p>
                 )}
               </div>
             </Card>

@@ -40,7 +40,7 @@ import {
   updateTelegramJoinMetaStatusByEventId,
   upsertSetting,
 } from "./db";
-import { sendPageView } from "./facebookCapi";
+import { sendLead, sendPageView } from "./facebookCapi";
 import { buildServerFbc, retryStoredMetaRequest } from "./metaCapi";
 import { getUtmSessionByToken, getSetting } from "./db";
 import { syncTelegramGroupUrlContent, TELEGRAM_GROUP_URL_SETTING_KEY, validateTelegramGroupUrl } from "./telegramGroupLink";
@@ -350,6 +350,54 @@ export const appRouter = router({
             attemptedAt: new Date(),
             completedAt: pageViewResult.success ? new Date() : null,
             nextRetryAt: pageViewResult.retryable ? new Date(Date.now() + 5 * 60 * 1000) : null,
+          });
+        }
+
+        if (input.eventType === "lead") {
+          // Lead = high-intent CTA click on the landing page (user is heading
+          // to Telegram). Fired before page unload so Meta has an optimization
+          // signal even if the user never reaches /start in the bot. Mirrors
+          // the browser fbq('track', 'Lead', ..., { eventID }) so the two
+          // events dedupe on Meta's side.
+          const leadEventId = input.eventId || `lead_${randomSessionToken()}`;
+          const capiPayloadWithId = { ...capiPayload, eventId: leadEventId };
+
+          await createMetaEventLog({
+            eventType: "Lead",
+            eventScope: "lead",
+            eventId: leadEventId,
+            funnelToken: input.funnelToken || null,
+            sessionToken: input.sessionToken || null,
+            requestPayloadJson: JSON.stringify(capiPayloadWithId),
+            status: "queued",
+            retryable: 0,
+            attemptCount: 0,
+          });
+
+          const leadResult = (await sendLead(capiPayloadWithId)) as any;
+          const leadStatus = leadResult.success
+            ? ("sent" as const)
+            : leadResult.retryable
+              ? ("retrying" as const)
+              : ("failed" as const);
+
+          await updateMetaEventLog(leadEventId, {
+            requestPayloadJson: leadResult.requestBody
+              ? JSON.stringify(leadResult.requestBody)
+              : JSON.stringify(capiPayloadWithId),
+            responsePayloadJson: leadResult.responseBody
+              ? JSON.stringify(leadResult.responseBody)
+              : null,
+            httpStatus: leadResult.httpStatus ?? null,
+            status: leadStatus,
+            errorCode: leadResult.errorCode ?? null,
+            errorSubcode: leadResult.errorSubcode ?? null,
+            errorMessage: leadResult.errorMessage ?? null,
+            retryable: leadResult.retryable ? 1 : 0,
+            attemptCount: 1,
+            attemptedAt: new Date(),
+            completedAt: leadResult.success ? new Date() : null,
+            nextRetryAt: leadResult.retryable ? new Date(Date.now() + 5 * 60 * 1000) : null,
           });
         }
 

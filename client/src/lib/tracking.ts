@@ -327,10 +327,38 @@ async function resolveSessionWithRetry(): Promise<TrackingSession | null> {
   return second;
 }
 
+function fireLeadPixel(eventId: string) {
+  if (typeof window === "undefined") return;
+  const fbq = (window as unknown as { fbq?: (...args: unknown[]) => void }).fbq;
+  if (typeof fbq !== "function") return;
+  try {
+    fbq("track", "Lead", { content_name: "Telegram Group CTA", content_category: "Telegram" }, { eventID: eventId });
+  } catch {
+    // Pixel must never block the user flow.
+  }
+}
+
 export async function trackTelegramGroupClick(source = "telegram_group_cta") {
   const fallbackFunnelToken = getOrCreateFunnelToken();
   // Ensure the _fbp cookie is created at click time even if it wasn't on first paint.
   ensureFbpCookie();
+
+  // Fire the Lead pixel + server CAPI BEFORE the heavy session resolve so we
+  // capture the high-intent click signal even if the user closes the tab
+  // mid-flight. Browser fbq is synchronous; the server CAPI uses keepalive so
+  // it survives page navigation.
+  const leadEventId = randomId("lead");
+  if (!shouldDebounceClick(`${source}__lead`)) {
+    fireLeadPixel(leadEventId);
+    void postTrackingRecord({
+      eventType: "lead",
+      eventSource: source,
+      visitorId: getVisitorId(),
+      eventId: leadEventId,
+      sessionToken: readStoredSession()?.sessionToken,
+      funnelToken: readStoredSession()?.funnelToken || fallbackFunnelToken,
+    });
+  }
 
   const session = await resolveSessionWithRetry();
   const debounce = shouldDebounceClick(source);
