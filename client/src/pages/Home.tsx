@@ -22,10 +22,9 @@ function readPersistedFunnelToken(): string {
 
 const telegramUrl = "https://t.me/MAXIME_SPECIALISTEM";
 
-// NOTE: This is intentional demo / social-proof content, not real-time data.
-// Names and actions are illustrative — the rotation only animates the toast,
-// it does not reflect live joins. If you need real activity here, wire it to
-// the dashboard.subscriberLog tRPC query instead.
+// NOTE: Demo / social-proof content, not real-time data. The rotation only
+// animates the toast — it does not reflect live joins. Wire to
+// dashboard.subscriberLog if you ever need real activity.
 const socialNotifications = [
   { id: "ahmed-tg", name: "Ahmed", detail: "s’est abonné Telegram" },
   { id: "sophie-vip", name: "Sophie", detail: "a rejoint le VIP" },
@@ -47,12 +46,10 @@ type SocialNotification = (typeof socialNotifications)[number];
 
 function shuffleNotifications(list: SocialNotification[]) {
   const copied = [...list];
-
   for (let index = copied.length - 1; index > 0; index -= 1) {
     const randomIndex = Math.floor(Math.random() * (index + 1));
     [copied[index], copied[randomIndex]] = [copied[randomIndex], copied[index]];
   }
-
   return copied;
 }
 
@@ -60,45 +57,20 @@ function buildVisitSequence() {
   if (typeof window === "undefined") {
     return socialNotifications;
   }
-
   const shuffled = shuffleNotifications(socialNotifications);
   const lastFirstToastId = window.localStorage.getItem("misterb-last-toast-id");
-
   if (shuffled.length > 1 && shuffled[0].id === lastFirstToastId) {
     const firstItem = shuffled.shift();
-    if (firstItem) {
-      shuffled.push(firstItem);
-    }
+    if (firstItem) shuffled.push(firstItem);
   }
-
   window.localStorage.setItem("misterb-last-toast-id", shuffled[0].id);
   return shuffled;
 }
 
-function WhatsAppIcon() {
+function TelegramIcon({ className = "" }: { className?: string }) {
   return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 32 32"
-      className="h-7.5 w-7.5 rounded-full bg-white shadow-[0_4px_12px_rgba(0,0,0,0.10)]"
-    >
-      <circle cx="16" cy="16" r="15" fill="#25D366" />
-      <path
-        fill="#fff"
-        d="M23.4 8.5A10.15 10.15 0 0 0 6.57 20.1L5 26.94l7-1.82a10.16 10.16 0 0 0 4.84 1.24h.01A10.16 10.16 0 0 0 23.4 8.5Zm-6.56 16.13h-.01a8.46 8.46 0 0 1-4.31-1.18l-.31-.18-4.16 1.09 1.11-4.05-.2-.33a8.43 8.43 0 1 1 7.88 4.65Zm4.63-6.32c-.25-.12-1.5-.74-1.73-.82-.23-.08-.4-.12-.56.13-.16.25-.64.82-.78.99-.14.16-.29.19-.54.06-.25-.12-1.04-.38-1.99-1.22-.74-.66-1.24-1.47-1.39-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.12-.15.16-.25.25-.42.08-.16.04-.31-.02-.43-.06-.12-.56-1.34-.77-1.84-.2-.48-.4-.41-.56-.42h-.48c-.16 0-.43.06-.66.31-.23.25-.87.85-.87 2.07 0 1.22.89 2.39 1.01 2.55.12.16 1.75 2.67 4.24 3.74.59.25 1.05.4 1.4.51.59.19 1.12.16 1.55.1.47-.07 1.5-.61 1.71-1.21.21-.6.21-1.11.15-1.21-.06-.1-.23-.16-.48-.29Z"
-      />
-    </svg>
-  );
-}
-
-function TelegramIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 32 32"
-      className="h-7.5 w-7.5 rounded-full bg-white shadow-[0_4px_12px_rgba(0,0,0,0.10)]"
-    >
-      <circle cx="16" cy="16" r="15" fill="#2AABEE" />
+    <svg aria-hidden="true" viewBox="0 0 32 32" className={className}>
+      <circle cx="16" cy="16" r="15" fill="currentColor" />
       <path
         fill="#fff"
         d="M23.97 9.18 21.58 22.3c-.18.93-.66 1.16-1.33.72l-4.28-3.16-2.06 1.98c-.23.23-.42.42-.86.42l.31-4.39 8-7.23c.35-.31-.07-.49-.54-.18l-9.89 6.22-4.26-1.33c-.93-.29-.95-.93.19-1.38L22.62 8c.73-.27 1.36.18 1.12 1.18Z"
@@ -107,24 +79,46 @@ function TelegramIcon() {
   );
 }
 
+function VerifiedBadge() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-[22px] w-[22px] shrink-0 drop-shadow-[0_2px_4px_rgba(29,155,240,0.45)]"
+    >
+      <path
+        fill="#1d9bf0"
+        d="M12 1.5 14.5 4l3.5-.4 1.4 3.2 3.1 1.7-.6 3.5L23 15l-1.4 3.2-3.1 1.7-1.4 3.2-3.5-.4L12 24l-2.5-2.5-3.5.4-1.4-3.2-3.1-1.7.6-3.5L1 9l1.4-3.2 3.1-1.7L7 .9l3.5.4z"
+      />
+      <path
+        fill="#fff"
+        d="m10.6 15.4-3-3 1.4-1.4 1.6 1.6 4.6-4.6 1.4 1.4z"
+      />
+    </svg>
+  );
+}
+
 type CtaButtonProps = {
   href: string;
   label: string;
-  icon: "whatsapp" | "telegram";
-  animationDelay: string;
+  variant: "primary" | "secondary";
   onTrack: (event: React.MouseEvent<HTMLAnchorElement>) => void | Promise<void>;
   openInSameTab?: boolean;
-  disabled?: boolean;
+  trailing?: string;
 };
 
-function CtaButton({ href, label, icon, animationDelay, onTrack, openInSameTab = false, disabled = false }: CtaButtonProps) {
+function CtaButton({ href, label, variant, onTrack, openInSameTab = false, trailing }: CtaButtonProps) {
   const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
-    if (disabled) {
-      event.preventDefault();
-      return;
-    }
     void onTrack(event);
   };
+
+  const base =
+    "group relative flex min-h-[60px] w-full items-center justify-center gap-3 rounded-2xl px-5 text-[0.95rem] font-[650] tracking-[-0.01em] transition-all duration-200 active:scale-[0.985]";
+
+  const styles =
+    variant === "primary"
+      ? "bg-gradient-to-br from-[#3ee07c] via-[#1cc36c] to-[#0a8f4a] text-white shadow-[0_12px_28px_rgba(28,195,108,0.45),inset_0_1px_0_rgba(255,255,255,0.35)] hover:shadow-[0_16px_36px_rgba(28,195,108,0.55),inset_0_1px_0_rgba(255,255,255,0.45)] hover:-translate-y-[2px]"
+      : "border border-white/12 bg-white/[0.04] text-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md hover:bg-white/[0.07] hover:border-white/20";
 
   return (
     <a
@@ -132,18 +126,18 @@ function CtaButton({ href, label, icon, animationDelay, onTrack, openInSameTab =
       target={openInSameTab ? "_self" : "_blank"}
       rel={openInSameTab ? undefined : "noreferrer"}
       data-direct-open={openInSameTab ? "telegram-bot" : undefined}
-      aria-disabled={disabled ? "true" : undefined}
       onClick={handleClick}
-      style={{ animation: disabled ? undefined : `ctaFloat 2.8s ease-in-out ${animationDelay} infinite` }}
-      className={`flex min-h-[66px] w-full items-center justify-center gap-3 rounded-[21px] bg-white px-4.5 py-3 text-[0.9rem] font-[650] uppercase tracking-[-0.02em] text-black shadow-[0_9px_20px_rgba(145,255,127,0.22)] transition-transform duration-150 ${disabled ? "cursor-wait opacity-80" : "hover:-translate-y-1 hover:shadow-[0_11px_24px_rgba(145,255,127,0.28)] active:translate-y-0"}`}
+      className={`${base} ${styles}`}
     >
-      <span
-        className="shrink-0"
-        style={{ animation: `ctaIconPulse 2.8s ease-in-out ${animationDelay} infinite` }}
-      >
-        {icon === "whatsapp" ? <WhatsAppIcon /> : <TelegramIcon />}
-      </span>
-      <span>{label}</span>
+      <TelegramIcon
+        className={`h-7 w-7 ${variant === "primary" ? "text-[#0a8f4a]" : "text-[#2AABEE]"}`}
+      />
+      <span className="uppercase tracking-[0.02em]">{label}</span>
+      {trailing ? (
+        <span aria-hidden="true" className="text-base">
+          {trailing}
+        </span>
+      ) : null}
     </a>
   );
 }
@@ -160,9 +154,6 @@ function getTelegramGroupHref(session?: TrackingSession | null) {
     return preferDeepLink ? session.telegramDeepLink : session.telegramBotUrl;
   }
 
-  // No session yet — build a funnelToken-only fallback link so the href in
-  // the DOM always carries some attribution hint, even before React mount or
-  // if the user taps before the createSession round-trip completes.
   const funnelToken = readPersistedFunnelToken();
   if (funnelToken) {
     const fallback = buildFallbackTrackingSession(funnelToken);
@@ -177,6 +168,12 @@ export default function Home() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isToastVisible, setIsToastVisible] = useState(false);
   const [telegramGroupHref, setTelegramGroupHref] = useState<string>(getTelegramGroupHref());
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => setHasMounted(true));
+    return () => window.cancelAnimationFrame(id);
+  }, []);
 
   useEffect(() => {
     void initAdvancedTracking().then((session) => {
@@ -185,171 +182,184 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const initialTimeout = window.setTimeout(() => {
-      setIsToastVisible(true);
-    }, 1600);
-
+    const initialTimeout = window.setTimeout(() => setIsToastVisible(true), 1400);
     let fadeTimeout: number | undefined;
-
     const interval = window.setInterval(() => {
       setIsToastVisible(false);
-
       fadeTimeout = window.setTimeout(() => {
         setActiveIndex((currentIndex) => (currentIndex + 1) % notifications.length);
         setIsToastVisible(true);
-      }, 260);
-    }, 4200);
+      }, 280);
+    }, 4500);
 
     return () => {
       window.clearTimeout(initialTimeout);
       window.clearInterval(interval);
-      if (fadeTimeout) {
-        window.clearTimeout(fadeTimeout);
-      }
+      if (fadeTimeout) window.clearTimeout(fadeTimeout);
     };
   }, [notifications.length]);
 
   const activeToast = notifications[activeIndex];
 
   return (
-    <main className="relative min-h-[100svh] overflow-hidden bg-[#1BD51C] text-black">
+    <main className="relative min-h-[100svh] overflow-hidden bg-[#04130b] text-white">
       <style>{`
-        @keyframes ctaFloat {
-          0%, 100% {
-            transform: translateY(0) scale(1);
-            box-shadow: 0 12px 24px rgba(145, 255, 127, 0.26);
-          }
-          50% {
-            transform: translateY(-4px) scale(1.018);
-            box-shadow: 0 18px 34px rgba(145, 255, 127, 0.38);
-          }
+        @keyframes maximeFadeUp {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-
-        @keyframes ctaIconPulse {
-          0%, 100% {
-            transform: scale(1);
-          }
-          50% {
-            transform: scale(1.08);
-          }
+        @keyframes maximePulse {
+          0%, 100% { transform: scale(1); opacity: 0.9; }
+          50%      { transform: scale(1.18); opacity: 1; }
         }
-
-        @keyframes toastDrift {
-          0%, 100% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-2px);
-          }
+        @keyframes maximeRingSpin {
+          to { transform: rotate(360deg); }
         }
+        .maxime-stagger > * {
+          opacity: 0;
+          animation: maximeFadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+        .maxime-stagger > *:nth-child(1) { animation-delay: 0.05s; }
+        .maxime-stagger > *:nth-child(2) { animation-delay: 0.18s; }
+        .maxime-stagger > *:nth-child(3) { animation-delay: 0.30s; }
+        .maxime-stagger > *:nth-child(4) { animation-delay: 0.42s; }
+        .maxime-stagger > *:nth-child(5) { animation-delay: 0.54s; }
+        .maxime-stagger > *:nth-child(6) { animation-delay: 0.66s; }
       `}</style>
 
-      <div className="pointer-events-none absolute inset-0 opacity-90">
-        <div className="absolute left-[-14%] top-[4%] h-40 w-40 rounded-full bg-[#c1ffb9] blur-3xl" />
-        <div className="absolute right-[-10%] top-[16%] h-44 w-44 rounded-full bg-[#cbffc6] blur-3xl" />
-        <div className="absolute left-[0%] top-[50%] h-52 w-52 rounded-full bg-[#c5ffbd] blur-3xl" />
-        <div className="absolute right-[3%] bottom-[14%] h-56 w-56 rounded-full bg-[#c8ffc1] blur-3xl" />
-      </div>
-
-      <div className="pointer-events-none absolute right-3 top-3 z-20 sm:right-4 sm:top-4">
-        <div
-          aria-live="polite"
-          className={`max-w-[150px] rounded-[15px] border border-white/45 bg-white/68 px-2.5 py-1.5 text-left shadow-[0_7px_16px_rgba(15,45,23,0.08)] backdrop-blur-sm transition-all duration-300 ${
-            isToastVisible ? "translate-y-0 opacity-100" : "translate-y-1.5 opacity-0"
-          }`}
-          style={{ animation: "toastDrift 4.2s ease-in-out infinite" }}
-        >
-          <div className="flex items-start gap-2">
-            <div className="mt-[2px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#42c85e] shadow-[0_0_0_3px_rgba(66,200,94,0.12)]" />
-            <div className="min-w-0">
-              <p className="text-[0.64rem] font-[640] leading-none tracking-[-0.015em] text-[#244428]">
-                {activeToast.name}
-              </p>
-              <p className="mt-0.5 text-[0.62rem] font-[430] leading-[1.18] tracking-[-0.01em] text-black/58">
-                {activeToast.detail}
-              </p>
-            </div>
-          </div>
-        </div>
+      {/* Mesh gradient background */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div className="absolute -left-[20%] -top-[15%] h-[55vh] w-[55vh] rounded-full bg-[#1de366] opacity-[0.28] blur-[110px]" />
+        <div className="absolute right-[-18%] top-[8%] h-[48vh] w-[48vh] rounded-full bg-[#0fb86c] opacity-[0.32] blur-[120px]" />
+        <div className="absolute left-[8%] bottom-[-18%] h-[60vh] w-[60vh] rounded-full bg-[#0a7f4d] opacity-[0.35] blur-[130px]" />
+        <div className="absolute right-[5%] bottom-[5%] h-[36vh] w-[36vh] rounded-full bg-[#5cffa3] opacity-[0.18] blur-[100px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.06),transparent_55%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0.35)_100%)]" />
       </div>
 
       <section
         id="hero-section"
-        className="relative mx-auto flex min-h-[100svh] w-full max-w-[374px] flex-col items-center justify-center px-4.5 py-2 text-center"
+        className="relative mx-auto flex min-h-[100svh] w-full max-w-[440px] flex-col items-center justify-center px-5 py-10 text-center"
       >
-        <div className="w-full">
+        <div
+          className={`maxime-stagger w-full ${hasMounted ? "" : "invisible"} rounded-[28px] border border-white/10 bg-white/[0.045] p-7 shadow-[0_30px_80px_-24px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl sm:p-8`}
+        >
+          {/* Avatar / logo with gradient ring + online dot */}
           <div className="flex justify-center">
-            <div
-              aria-label="Logo MAXIME"
-              className="flex h-[130px] w-[130px] items-center justify-center rounded-full bg-white shadow-[0_8px_18px_rgba(124,255,113,0.28)]"
-            >
-              <span className="text-[2.6rem] font-[800] tracking-[-0.05em] text-black">
-                M
-                <span aria-hidden="true" className="ml-0.5 text-[1.7rem]">
+            <div className="relative">
+              <div
+                aria-hidden="true"
+                className="absolute -inset-[3px] rounded-full bg-[conic-gradient(from_0deg,#3ee07c,#1cc36c,#0a8f4a,#3ee07c)] opacity-90 blur-[1px]"
+              />
+              <div
+                aria-label="Logo MAXIME"
+                className="relative flex h-[118px] w-[118px] items-center justify-center rounded-full bg-[#0c1b13] shadow-[0_18px_40px_rgba(0,0,0,0.45),inset_0_0_0_1px_rgba(255,255,255,0.05)]"
+              >
+                <span className="bg-gradient-to-br from-white via-[#d8ffe5] to-[#7af0a8] bg-clip-text text-[3.4rem] font-[800] leading-none tracking-[-0.06em] text-transparent">
+                  M
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="absolute -bottom-1 right-1 flex h-[26px] w-[26px] items-center justify-center rounded-full border-2 border-[#0c1b13] bg-[#1cc36c] text-[0.9rem] shadow-[0_2px_8px_rgba(28,195,108,0.6)]"
+                >
                   🌐
                 </span>
-              </span>
+              </div>
             </div>
           </div>
 
-          <h1 className="mt-3.5 text-[2.55rem] font-[700] tracking-[-0.05em] text-black">
-            MAXIME <span aria-hidden="true">🌐</span>
-          </h1>
-
-          <div id="hero-copy" className="mx-auto mt-3.5 max-w-[302px]">
-            <p className="text-[1.32rem] font-[620] leading-[1.18] tracking-[-0.034em] text-black">
-              Voici tous les liens pour rejoindre mes comptes et groupes <span aria-hidden="true">✅</span>
-            </p>
+          {/* Name + verified badge */}
+          <div className="mt-5 flex items-center justify-center gap-2">
+            <h1 className="text-[2.2rem] font-[800] leading-none tracking-[-0.045em] text-white sm:text-[2.4rem]">
+              MAXIME
+            </h1>
+            <VerifiedBadge />
           </div>
 
-          <p className="mx-auto mt-3.5 max-w-[314px] text-[0.94rem] font-[430] leading-[1.22] tracking-[-0.02em] text-black/82">
-            Clique pour rejoindre le groupe privé <span aria-hidden="true">✅</span>
+          {/* Trust strip */}
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[0.72rem] font-medium tracking-wide text-white/80">
+            <span className="relative flex h-2 w-2">
+              <span
+                className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#3ee07c] opacity-75"
+                style={{ animation: "maximePulse 2.4s ease-in-out infinite" }}
+              />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#3ee07c]" />
+            </span>
+            En ligne · Communauté privée active
+          </div>
+
+          {/* Subtitle */}
+          <p className="mx-auto mt-5 max-w-[320px] text-[1.02rem] font-[500] leading-[1.4] tracking-[-0.018em] text-white/82">
+            Voici tous les liens pour rejoindre mes comptes et groupes <span aria-hidden="true">✅</span>
           </p>
-        </div>
 
-        <div id="cta-group" className="mt-4.5 w-full space-y-3">
-          <CtaButton
-            href={telegramGroupHref}
-            label="Groupe Telegram ✅"
-            icon="telegram"
-            animationDelay="0s"
-            openInSameTab
-            onTrack={async (event) => {
-              event.preventDefault();
-              const session = await trackTelegramGroupClick("telegram_group_cta");
-              // trackTelegramGroupClick is guaranteed to return a session whose
-              // telegramBotUrl already contains a non-empty `?start=` payload
-              // (real session OR funnelToken-only fallback). Trust that — never
-              // fall back to a payload-less bot URL here.
-              const targetHref = getTelegramGroupHref(session);
-              setTelegramGroupHref(targetHref);
-              window.location.assign(targetHref);
-            }}
-          />
-          <CtaButton
-            href={telegramUrl}
-            label="Me contacter"
-            icon="telegram"
-            animationDelay="0.45s"
-            openInSameTab
-            onTrack={async (event) => {
-              event.preventDefault();
-              try {
-                await trackTelegramClick("telegram_contact_cta");
-              } finally {
-                window.location.assign(telegramUrl);
-              }
-            }}
-          />
-        </div>
+          {/* CTAs */}
+          <div id="cta-group" className="mt-6 w-full space-y-3">
+            <CtaButton
+              href={telegramGroupHref}
+              label="Groupe Telegram"
+              trailing="✅"
+              variant="primary"
+              openInSameTab
+              onTrack={async (event) => {
+                event.preventDefault();
+                const session = await trackTelegramGroupClick("telegram_group_cta");
+                // trackTelegramGroupClick is guaranteed to return a session whose
+                // telegramBotUrl already contains a non-empty `?start=` payload
+                // (real session OR funnelToken-only fallback). Trust that — never
+                // fall back to a payload-less bot URL here.
+                const targetHref = getTelegramGroupHref(session);
+                setTelegramGroupHref(targetHref);
+                window.location.assign(targetHref);
+              }}
+            />
+            <CtaButton
+              href={telegramUrl}
+              label="Me contacter"
+              variant="secondary"
+              openInSameTab
+              onTrack={async (event) => {
+                event.preventDefault();
+                try {
+                  await trackTelegramClick("telegram_contact_cta");
+                } finally {
+                  window.location.assign(telegramUrl);
+                }
+              }}
+            />
+          </div>
 
-        <div className="mt-4.5 flex flex-col items-center gap-1">
-          <p className="text-[0.76rem] font-normal tracking-[-0.01em] text-black/36">Join Maxime</p>
-          <a href="/dashboard" className="text-[0.64rem] font-medium tracking-[0.14em] uppercase text-black/30 transition hover:text-black/50">
-            Accès suivi privé
-          </a>
+          {/* Footer */}
+          <div className="mt-7 flex flex-col items-center gap-1.5">
+            <p className="text-[0.74rem] font-medium tracking-[-0.01em] text-white/40">Join Maxime</p>
+            <a
+              href="/dashboard"
+              className="text-[0.62rem] font-medium uppercase tracking-[0.18em] text-white/30 transition hover:text-white/60"
+            >
+              Accès suivi privé
+            </a>
+          </div>
         </div>
       </section>
+
+      {/* Live activity chip — bottom center */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex justify-center px-4 sm:bottom-6">
+        <div
+          aria-live="polite"
+          className={`flex max-w-[320px] items-center gap-2.5 rounded-full border border-white/10 bg-black/45 px-3.5 py-2 text-left shadow-[0_10px_24px_rgba(0,0,0,0.4)] backdrop-blur-xl transition-all duration-300 ${
+            isToastVisible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
+          }`}
+        >
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#3ee07c] opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-[#3ee07c]" />
+          </span>
+          <p className="truncate text-[0.72rem] font-medium tracking-[-0.005em] text-white/90">
+            <span className="font-[650] text-white">{activeToast.name}</span>{" "}
+            <span className="text-white/65">{activeToast.detail}</span>
+          </p>
+        </div>
+      </div>
     </main>
   );
 }
