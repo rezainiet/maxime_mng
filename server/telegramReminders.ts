@@ -8,8 +8,8 @@ import { DEFAULT_TELEGRAM_GROUP_URL, getTelegramGroupUrl } from "./telegramGroup
 
 const WORKER_NAME = "telegram_reminders";
 
-const TELEGRAM_DIRECT_CONTACT = "@MisterBNMB";
-const TELEGRAM_DIRECT_CONTACT_LINE = `Tu peux aussi me contacter directement : ${TELEGRAM_DIRECT_CONTACT}`;
+const TELEGRAM_DIRECT_CONTACT = "@MAXIME_SPECIALISTEM";
+const TELEGRAM_DIRECT_CONTACT_LINE = `Une question ? Écris-moi en direct : ${TELEGRAM_DIRECT_CONTACT}`;
 const WORKER_INTERVAL_MS = 60_000;
 const PROCESS_BATCH_SIZE = 25;
 
@@ -21,7 +21,7 @@ export const TELEGRAM_REMINDER_STEPS = [
     label: "Reminder 1 (15 min)",
     description: "First reminder if not joined.",
     defaultDelayMin: 15,
-    defaultTemplate: "Je te renvoie l’accès au canal privé Mister B. Tu y retrouveras les nouveautés, les infos réservées et le contenu partagé en privé. Rejoins-le maintenant ici → {group_url}",
+    defaultTemplate: "Hey {firstName} 👋 Je viens de remarquer que tu n’avais pas encore rejoint le groupe privé MAXIME 🌐 Tu vas adorer ce qu’on partage là-bas — ton accès t’attend toujours ici → {group_url}",
   },
   {
     key: "1h",
@@ -30,7 +30,7 @@ export const TELEGRAM_REMINDER_STEPS = [
     label: "Reminder 2 (1 h)",
     description: "Second reminder if not joined.",
     defaultDelayMin: 60,
-    defaultTemplate: "Je me permets de te renvoyer le lien du canal privé Mister B au cas où tu n’aurais pas eu le temps tout à l’heure. L’accès est toujours disponible ici → {group_url}",
+    defaultTemplate: "Petit message pour toi {firstName} ✨ Au cas où tu aurais loupé le lien tout à l’heure, voici l’accès direct au groupe privé MAXIME 🌐 → {group_url}",
   },
   {
     key: "4h",
@@ -39,7 +39,7 @@ export const TELEGRAM_REMINDER_STEPS = [
     label: "Reminder 3 (4 h)",
     description: "Third reminder if not joined.",
     defaultDelayMin: 4 * 60,
-    defaultTemplate: "Le canal privé Mister B est toujours ouvert pour toi. Si tu veux voir les nouveautés et le contenu réservé, tu peux le rejoindre directement ici → {group_url}",
+    defaultTemplate: "{firstName}, le groupe privé MAXIME 🌐 est toujours ouvert pour toi 🔓 Ne loupe pas les nouveautés et le contenu exclusif — entre quand tu veux ici → {group_url}",
   },
   {
     key: "24h",
@@ -48,7 +48,7 @@ export const TELEGRAM_REMINDER_STEPS = [
     label: "Reminder 4 (24 h)",
     description: "24h reminder after /start.",
     defaultDelayMin: 24 * 60,
-    defaultTemplate: "Petit rappel : si tu n’as pas encore rejoint le canal privé Mister B, ton accès est toujours disponible. Tu peux entrer directement ici → {group_url}",
+    defaultTemplate: "Hello {firstName} ☀️ Petit rappel : ton accès au groupe privé MAXIME 🌐 est encore actif. Si t’as eu un empêchement hier, voici le re-lien → {group_url}",
   },
   {
     key: "1w",
@@ -57,7 +57,7 @@ export const TELEGRAM_REMINDER_STEPS = [
     label: "Reminder 5 (1 week)",
     description: "Weekly nudge if still not joined.",
     defaultDelayMin: 7 * 24 * 60,
-    defaultTemplate: "Je te renvoie l’accès au canal privé Mister B pour cette semaine. Si tu voulais rejoindre mais que tu as repoussé, c’est le bon moment pour entrer → {group_url}",
+    defaultTemplate: "Hey {firstName} 👋 Cette semaine on a partagé pas mal de choses sympas dans le groupe privé MAXIME 🌐 Si tu veux découvrir, c’est toujours par ici → {group_url}",
   },
   {
     key: "2w",
@@ -66,7 +66,7 @@ export const TELEGRAM_REMINDER_STEPS = [
     label: "Reminder 6 (2 weeks)",
     description: "Two-week nudge if still not joined.",
     defaultDelayMin: 14 * 24 * 60,
-    defaultTemplate: "Je reviens vers toi avec le lien du canal privé Mister B. Si tu es toujours intéressé, tu peux rejoindre l’espace privé ici → {group_url}",
+    defaultTemplate: "Salut {firstName} ! Ça fait deux semaines que ton accès au groupe privé MAXIME 🌐 t’attend. Si t’es toujours partant·e, viens nous rejoindre → {group_url}",
   },
   {
     key: "1m",
@@ -75,7 +75,7 @@ export const TELEGRAM_REMINDER_STEPS = [
     label: "Reminder 7 (1 month)",
     description: "Final monthly reminder.",
     defaultDelayMin: 30 * 24 * 60,
-    defaultTemplate: "Dernier rappel de ma part : si tu veux encore accéder au canal privé Mister B et aux infos réservées, voici le lien direct → {group_url}",
+    defaultTemplate: "Dernier mot de ma part {firstName} 🔔 Si tu veux encore profiter du groupe privé MAXIME 🌐 et du contenu réservé, ton accès est toujours valable ici → {group_url}",
   },
 ] as const;
 
@@ -126,7 +126,7 @@ export function renderTelegramReminderMessage(template: string, context: Reminde
     .replaceAll("{firstName}", firstName)
     .replaceAll("{group_url}", groupUrl)
     .replaceAll("{groupLink}", groupUrl)
-    .replaceAll("{brand}", "Mister B")
+    .replaceAll("{brand}", "MAXIME")
     .replaceAll(/\n{3,}/g, "\n\n")
     .trim();
 
@@ -150,7 +150,7 @@ export function renderTelegramWelcomeMessage(template: string, context: Reminder
     .replaceAll("{firstName}", firstName)
     .replaceAll("{group_url}", groupUrl)
     .replaceAll("{groupLink}", groupUrl)
-    .replaceAll("{brand}", "Mister B")
+    .replaceAll("{brand}", "MAXIME")
     .trim();
 }
 

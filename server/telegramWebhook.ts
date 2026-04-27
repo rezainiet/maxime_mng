@@ -37,7 +37,7 @@ import {
   skipPendingTelegramReminderJobs,
 } from "./telegramReminders";
 
-const TELEGRAM_DIRECT_CONTACT = "@MisterBNMB";
+const TELEGRAM_DIRECT_CONTACT = "@MAXIME_SPECIALISTEM";
 const META_RETRY_DELAY_MS = 5 * 60 * 1000;
 
 function getBotToken() {
@@ -91,11 +91,11 @@ function isWebhookSecretValid(supplied: string | string[] | undefined) {
 
 export function buildDefaultWelcomeMessage(groupUrl: string = DEFAULT_TELEGRAM_GROUP_URL) {
   return [
-    "Bienvenue chez Mister B.",
-    "Ici, tu vas pouvoir accéder aux nouveautés, aux infos réservées et au contenu privé.",
-    `Rejoins maintenant le canal privé ici → ${groupUrl}`,
+    "🌐 Bienvenue dans la team MAXIME ✨",
+    "Ici, tu vas pouvoir accéder aux nouveautés, aux bons plans et au contenu réservé aux membres 🔓",
+    `👉 Rejoins le groupe privé maintenant ici → ${groupUrl}`,
     "",
-    `Et si tu veux échanger directement avec moi, tu peux aussi me contacter ici : ${TELEGRAM_DIRECT_CONTACT}`,
+    `💬 Une question ? Écris-moi en direct : ${TELEGRAM_DIRECT_CONTACT}`,
   ].join("\n");
 }
 

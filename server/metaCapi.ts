@@ -4,7 +4,7 @@ const PIXEL_ID = process.env.META_PIXEL_ID ?? "";
 const ACCESS_TOKEN = process.env.META_CONVERSIONS_TOKEN ?? "";
 const GRAPH_VERSION = "v21.0";
 const CAPI_URL = `https://graph.facebook.com/${GRAPH_VERSION}/${PIXEL_ID}/events`;
-const DEFAULT_SOURCE_URL = process.env.APP_BASE_URL || "https://mister-b.club";
+const DEFAULT_SOURCE_URL = process.env.APP_BASE_URL || "https://maximemng-production.up.railway.app";
 
 function hashValue(value: string): string {
   return crypto.createHash("sha256").update(value.toLowerCase().trim()).digest("hex");

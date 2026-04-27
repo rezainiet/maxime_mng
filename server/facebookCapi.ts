@@ -82,7 +82,7 @@ function buildCustomData(eventName: ConversionEventName, payload: ConversionPayl
   }
 
   const base: Record<string, unknown> = {
-    content_name: "Mister B Landing",
+    content_name: "MAXIME Landing",
   };
   if (payload.utmSource) base.utm_source = payload.utmSource;
   if (payload.utmMedium) base.utm_medium = payload.utmMedium;

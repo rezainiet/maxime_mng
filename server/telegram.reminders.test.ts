@@ -25,15 +25,15 @@ describe("telegram reminders", () => {
       groupUrl: "https://t.me/+demo",
     });
 
-    expect(message).toBe("Salut Karim → https://t.me/+demo\n\nTu peux aussi me contacter directement : @MisterBNMB");
+    expect(message).toBe("Salut Karim → https://t.me/+demo\n\nUne question ? Écris-moi en direct : @MAXIME_SPECIALISTEM");
   });
 
   it("construit un message de bienvenue vendeur avec lien du canal et contact direct", () => {
     const message = buildDefaultWelcomeMessage("https://t.me/+demo");
 
-    expect(message).toContain("Bienvenue chez Mister B.");
+    expect(message).toContain("Bienvenue dans la team MAXIME");
     expect(message).toContain("https://t.me/+demo");
-    expect(message).toContain("@MisterBNMB");
+    expect(message).toContain("@MAXIME_SPECIALISTEM");
   });
 
   it("génère une file de sept jobs avec les bons délais et des messages différenciés", async () => {
@@ -55,8 +55,9 @@ describe("telegram reminders", () => {
       TELEGRAM_REMINDER_STEPS.map((step) => step.defaultDelayMin * 60 * 1000),
     );
 
-    expect(drafts[0]?.messageText).toContain("Je te renvoie l’accès au canal privé Mister B");
+    expect(drafts[0]?.messageText).toContain("groupe privé MAXIME");
+    expect(drafts[0]?.messageText).toContain("Yassine");
     expect(drafts[0]?.messageText).toContain("https://t.me/");
-    expect(drafts[0]?.messageText).toContain("@MisterBNMB");
+    expect(drafts[0]?.messageText).toContain("@MAXIME_SPECIALISTEM");
   });
 });
