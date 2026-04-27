@@ -23,12 +23,17 @@ const {
 
 vi.mock("./telegramBot", () => ({
   sendTelegramMessage: sendTelegramMessageMock,
+  createPerUserInviteLink: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock("./telegramReminders", () => ({
-  scheduleTelegramReminderSequence: scheduleTelegramReminderSequenceMock,
-  skipPendingTelegramReminderJobs: skipPendingTelegramReminderJobsMock,
-}));
+vi.mock("./telegramReminders", async () => {
+  const actual = await vi.importActual<typeof import("./telegramReminders")>("./telegramReminders");
+  return {
+    ...actual,
+    scheduleTelegramReminderSequence: scheduleTelegramReminderSequenceMock,
+    skipPendingTelegramReminderJobs: skipPendingTelegramReminderJobsMock,
+  };
+});
 
 vi.mock("./metaCapi", async () => {
   const actual = await vi.importActual<typeof import("./metaCapi")>("./metaCapi");

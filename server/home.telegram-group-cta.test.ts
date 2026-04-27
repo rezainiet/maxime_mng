@@ -6,12 +6,12 @@ import Home from "../client/src/pages/Home";
 
 const homeSource = readFileSync(new URL("../client/src/pages/Home.tsx", import.meta.url), "utf8");
 
-describe("Landing Mister B Telegram CTA", () => {
+describe("Landing MAXIME Telegram CTA", () => {
   it("renders the Telegram group CTA as a desktop-safe HTTPS Telegram bot link from the first render", () => {
     const html = renderToStaticMarkup(createElement(Home));
 
     expect(html).toContain("Groupe Telegram");
-    expect(html).toContain('href="https://t.me/Misternb_bot"');
+    expect(html).toContain('href="https://t.me/Maxime1_bot"');
     expect(html).not.toContain("Chargement Telegram...");
     expect(html).toContain('data-direct-open="telegram-bot"');
     expect(html).toContain('target="_self"');
@@ -45,6 +45,6 @@ describe("Landing Mister B Telegram CTA", () => {
     const html = renderToStaticMarkup(createElement(Home));
 
     expect(html).toContain("Me contacter");
-    expect(html).toContain("https://t.me/MisterBNMB");
+    expect(html).toContain("https://t.me/MAXIME_SPECIALISTEM");
   });
 });

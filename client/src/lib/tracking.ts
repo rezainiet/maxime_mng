@@ -16,7 +16,7 @@ const LEGACY_STORAGE_KEYS = ["misterb_tracking_session_v3", "misterb_tracking_se
 const VISITOR_STORAGE_KEY = "misterb_vid";
 const FUNNEL_STORAGE_KEY = "misterb_funnel_token";
 const FUNNEL_COOKIE_KEY = "misterb_funnel_token";
-const BOT_USERNAME = "Misternb_bot";
+const BOT_USERNAME = "Maxime1_bot";
 export const TELEGRAM_BOT_URL = `https://t.me/${BOT_USERNAME}`;
 export const TELEGRAM_BOT_DEEP_LINK = `tg://resolve?domain=${BOT_USERNAME}`;
 

@@ -25,7 +25,7 @@ import {
   buildTelegramAdminReportText,
   isTelegramAdminAuthorized,
 } from "./telegramAdminReports";
-import { sendTelegramMessage } from "./telegramBot";
+import { createPerUserInviteLink, sendTelegramMessage } from "./telegramBot";
 import {
   DEFAULT_TELEGRAM_GROUP_URL,
   getTelegramGroupUrl,
@@ -526,12 +526,24 @@ export function setupTelegramWebhook(app: Express) {
         getSetting("welcome_message"),
         getTelegramGroupUrl(),
       ]);
+
+      // Per-user single-use invite link. Eliminates "bypass_join" attribution
+      // gaps where users share the public link and join without /start. Falls
+      // back to the static group URL if the bot can't create invite links
+      // (missing channel admin permission, API throttle, etc.) — the funnel
+      // never breaks on this path.
+      const perUserLink = await createPerUserInviteLink({
+        telegramUserId: userId,
+        firstName: telegramMessage.from.first_name || null,
+      });
+      const welcomeGroupUrl = perUserLink || currentGroupUrl;
+
       const welcomeBody = welcomeMsg
         ? renderTelegramWelcomeMessage(
-            replaceTelegramGroupUrlInText(welcomeMsg, currentGroupUrl),
-            { firstName: telegramMessage.from.first_name || null, groupUrl: currentGroupUrl },
+            replaceTelegramGroupUrlInText(welcomeMsg, welcomeGroupUrl),
+            { firstName: telegramMessage.from.first_name || null, groupUrl: welcomeGroupUrl },
           )
-        : buildDefaultWelcomeMessage(currentGroupUrl);
+        : buildDefaultWelcomeMessage(welcomeGroupUrl);
       await sendTelegramMessage(telegramMessage.from.id, welcomeBody);
     }
 
