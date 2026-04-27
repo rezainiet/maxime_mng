@@ -735,7 +735,7 @@ export default function Dashboard() {
       }
       setPassword("");
       toast.success("Connexion réussie", {
-        description: "Le dashboard Mister B est maintenant accessible.",
+        description: "Le dashboard MAXIME est maintenant accessible.",
       });
     } catch (error) {
       console.error(error);
@@ -799,7 +799,7 @@ export default function Dashboard() {
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/80 px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-amber-300">
               <ShieldCheck className="h-4 w-4" /> Accès privé
             </div>
-            <h1 className="mt-5 text-[2rem] font-bold tracking-[-0.06em] text-amber-300">Mister B Tracker</h1>
+            <h1 className="mt-5 text-[2rem] font-bold tracking-[-0.06em] text-amber-300">MAXIME Tracker</h1>
             <p className="mt-2 text-sm leading-6 text-slate-300">
               Dashboard live inspiré de la vidéo de référence, avec statut publicité, lecture depuis minuit,
               fraîcheur des données et événements récents.
@@ -849,7 +849,7 @@ export default function Dashboard() {
                 href="/"
                 className="inline-flex items-center gap-2 text-sm font-medium text-slate-300 transition hover:text-white"
               >
-                <ArrowLeft className="h-4 w-4" /> Retour à la landing Mister B
+                <ArrowLeft className="h-4 w-4" /> Retour à la landing MAXIME
               </Link>
             </div>
           </Card>
@@ -865,8 +865,8 @@ export default function Dashboard() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start justify-between gap-4 lg:items-center">
               <div>
-                <h1 className="text-[1.6rem] font-bold tracking-[-0.05em] text-amber-300 lg:text-3xl">Mister B Tracker</h1>
-                <p className="mt-1 text-sm text-slate-400">mister-b · Real-time Dashboard</p>
+                <h1 className="text-[1.6rem] font-bold tracking-[-0.05em] text-amber-300 lg:text-3xl">MAXIME Tracker</h1>
+                <p className="mt-1 text-sm text-slate-400">maxime · Real-time Dashboard</p>
               </div>
               <div className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-200 lg:hidden">
                 <span className="text-base">🇫🇷</span>
@@ -945,7 +945,7 @@ export default function Dashboard() {
         {statsQuery.isLoading ? (
           <div className="flex min-h-[40vh] items-center justify-center">
             <div className="inline-flex items-center gap-3 rounded-full border border-slate-700 bg-slate-900 px-5 py-3 text-sm text-slate-200">
-              <Loader2 className="h-4 w-4 animate-spin" /> Chargement des statistiques Mister B...
+              <Loader2 className="h-4 w-4 animate-spin" /> Chargement des statistiques MAXIME...
             </div>
           </div>
         ) : data ? (

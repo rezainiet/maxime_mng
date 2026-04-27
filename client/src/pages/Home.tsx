@@ -20,24 +20,24 @@ function readPersistedFunnelToken(): string {
   }
 }
 
-const telegramUrl = "https://t.me/MisterBNMB";
-const logoUrl =
-  "https://d2xsxph8kpxj0f.cloudfront.net/310519663482010907/nmN5FRo8qmaVANQi8aWFsw/misterb-logo_21161f1e.jpeg";
+const telegramUrl = "https://t.me/MAXIME_SPECIALISTEM";
 
 // NOTE: This is intentional demo / social-proof content, not real-time data.
 // Names and actions are illustrative — the rotation only animates the toast,
 // it does not reflect live joins. If you need real activity here, wire it to
 // the dashboard.subscriberLog tRPC query instead.
 const socialNotifications = [
-  { id: "lucas-group", name: "Lucas", detail: "a rejoint le groupe privé" },
+  { id: "ahmed-tg", name: "Ahmed", detail: "s’est abonné Telegram" },
+  { id: "sophie-vip", name: "Sophie", detail: "a rejoint le VIP" },
+  { id: "lucas-tg", name: "Lucas", detail: "a écrit sur Telegram" },
+  { id: "marie-tg", name: "Marie", detail: "vient de s’abonner" },
   { id: "mehdi-tg", name: "Mehdi", detail: "vient de cliquer sur Telegram" },
-  { id: "sofia-msg", name: "Sofia", detail: "vient d’écrire à Mister B" },
+  { id: "sofia-msg", name: "Sofia", detail: "vient d’écrire à Maxime" },
   { id: "antoine-group", name: "Antoine", detail: "a rejoint le groupe" },
   { id: "yasmine-news", name: "Yasmine", detail: "vient de demander les nouveautés" },
-  { id: "marco-tg", name: "Marco", detail: "vient de cliquer sur Telegram" },
   { id: "karim-group", name: "Karim", detail: "a rejoint le groupe privé" },
   { id: "lea-tg", name: "Léa", detail: "vient de cliquer sur Telegram" },
-  { id: "amine-msg", name: "Amine", detail: "vient d’écrire à Mister B" },
+  { id: "amine-msg", name: "Amine", detail: "vient d’écrire à Maxime" },
   { id: "giulia-vip", name: "Giulia", detail: "vient de rejoindre la liste VIP" },
   { id: "nora-group", name: "Nora", detail: "a rejoint le groupe" },
   { id: "samir-tg", name: "Samir", detail: "vient de cliquer sur Telegram" },
@@ -279,20 +279,26 @@ export default function Home() {
       >
         <div className="w-full">
           <div className="flex justify-center">
-            <div className="rounded-full bg-white p-[5px] shadow-[0_8px_18px_rgba(124,255,113,0.28)]">
-              <img
-                src={logoUrl}
-                alt="Logo Mister B"
-                className="h-[120px] w-[120px] rounded-full object-cover shadow-[0_0_18px_rgba(243,255,126,0.26)]"
-              />
+            <div
+              aria-label="Logo MAXIME"
+              className="flex h-[130px] w-[130px] items-center justify-center rounded-full bg-white shadow-[0_8px_18px_rgba(124,255,113,0.28)]"
+            >
+              <span className="text-[2.6rem] font-[800] tracking-[-0.05em] text-black">
+                M
+                <span aria-hidden="true" className="ml-0.5 text-[1.7rem]">
+                  🌐
+                </span>
+              </span>
             </div>
           </div>
 
-          <h1 className="mt-3.5 text-[2.55rem] font-[700] tracking-[-0.05em] text-black">Mister B</h1>
+          <h1 className="mt-3.5 text-[2.55rem] font-[700] tracking-[-0.05em] text-black">
+            MAXIME <span aria-hidden="true">🌐</span>
+          </h1>
 
           <div id="hero-copy" className="mx-auto mt-3.5 max-w-[302px]">
-            <p className="text-[1.68rem] font-[620] leading-[1.1] tracking-[-0.038em] text-black">
-              Vendeur numéro 1 en France aujourd&apos;hui jamais égalé <span aria-hidden="true">🇫🇷</span>
+            <p className="text-[1.32rem] font-[620] leading-[1.18] tracking-[-0.034em] text-black">
+              Voici tous les liens pour rejoindre mes comptes et groupes <span aria-hidden="true">✅</span>
             </p>
           </div>
 
@@ -304,7 +310,7 @@ export default function Home() {
         <div id="cta-group" className="mt-4.5 w-full space-y-3">
           <CtaButton
             href={telegramGroupHref}
-            label="Groupe Telegram"
+            label="Groupe Telegram ✅"
             icon="telegram"
             animationDelay="0s"
             openInSameTab
@@ -338,7 +344,7 @@ export default function Home() {
         </div>
 
         <div className="mt-4.5 flex flex-col items-center gap-1">
-          <p className="text-[0.76rem] font-normal tracking-[-0.01em] text-black/36">Join Mister B</p>
+          <p className="text-[0.76rem] font-normal tracking-[-0.01em] text-black/36">Join Maxime</p>
           <a href="/dashboard" className="text-[0.64rem] font-medium tracking-[0.14em] uppercase text-black/30 transition hover:text-black/50">
             Accès suivi privé
           </a>
