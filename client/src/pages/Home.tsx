@@ -117,7 +117,7 @@ function CtaButton({ href, label, variant, onTrack, openInSameTab = false, trail
 
   const styles =
     variant === "primary"
-      ? "bg-gradient-to-br from-[#3ee07c] via-[#1cc36c] to-[#0a8f4a] text-white shadow-[0_12px_28px_rgba(28,195,108,0.45),inset_0_1px_0_rgba(255,255,255,0.35)] hover:shadow-[0_16px_36px_rgba(28,195,108,0.55),inset_0_1px_0_rgba(255,255,255,0.45)] hover:-translate-y-[2px]"
+      ? "bg-gradient-to-br from-[#ff4747] via-[#e60000] to-[#a60000] text-white shadow-[0_12px_28px_rgba(230,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.30)] hover:shadow-[0_16px_36px_rgba(230,0,0,0.60),inset_0_1px_0_rgba(255,255,255,0.40)] hover:-translate-y-[2px]"
       : "border border-white/12 bg-white/[0.04] text-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md hover:bg-white/[0.07] hover:border-white/20";
 
   return (
@@ -130,7 +130,7 @@ function CtaButton({ href, label, variant, onTrack, openInSameTab = false, trail
       className={`${base} ${styles}`}
     >
       <TelegramIcon
-        className={`h-7 w-7 ${variant === "primary" ? "text-[#0a8f4a]" : "text-[#2AABEE]"}`}
+        className={`h-7 w-7 ${variant === "primary" ? "text-[#a60000]" : "text-[#2AABEE]"}`}
       />
       <span className="uppercase tracking-[0.02em]">{label}</span>
       {trailing ? (
@@ -202,7 +202,7 @@ export default function Home() {
   const activeToast = notifications[activeIndex];
 
   return (
-    <main className="relative min-h-[100svh] overflow-hidden bg-[#04130b] text-white">
+    <main className="relative min-h-[100svh] overflow-hidden bg-[#0a0405] text-white">
       <style>{`
         @keyframes maximeFadeUp {
           from { opacity: 0; transform: translateY(14px); }
@@ -227,14 +227,14 @@ export default function Home() {
         .maxime-stagger > *:nth-child(6) { animation-delay: 0.66s; }
       `}</style>
 
-      {/* Mesh gradient background */}
+      {/* Mesh gradient background — red on black, matches logo palette */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-[20%] -top-[15%] h-[55vh] w-[55vh] rounded-full bg-[#1de366] opacity-[0.28] blur-[110px]" />
-        <div className="absolute right-[-18%] top-[8%] h-[48vh] w-[48vh] rounded-full bg-[#0fb86c] opacity-[0.32] blur-[120px]" />
-        <div className="absolute left-[8%] bottom-[-18%] h-[60vh] w-[60vh] rounded-full bg-[#0a7f4d] opacity-[0.35] blur-[130px]" />
-        <div className="absolute right-[5%] bottom-[5%] h-[36vh] w-[36vh] rounded-full bg-[#5cffa3] opacity-[0.18] blur-[100px]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.06),transparent_55%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0.35)_100%)]" />
+        <div className="absolute -left-[18%] -top-[12%] h-[55vh] w-[55vh] rounded-full bg-[#ff1f1f] opacity-[0.32] blur-[120px]" />
+        <div className="absolute right-[-18%] top-[6%] h-[48vh] w-[48vh] rounded-full bg-[#d40606] opacity-[0.36] blur-[130px]" />
+        <div className="absolute left-[6%] bottom-[-20%] h-[60vh] w-[60vh] rounded-full bg-[#8a0202] opacity-[0.40] blur-[140px]" />
+        <div className="absolute right-[8%] bottom-[8%] h-[36vh] w-[36vh] rounded-full bg-[#ff5252] opacity-[0.18] blur-[110px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05),transparent_55%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0.45)_100%)]" />
       </div>
 
       <section
@@ -244,27 +244,32 @@ export default function Home() {
         <div
           className={`maxime-stagger w-full ${hasMounted ? "" : "invisible"} rounded-[28px] border border-white/10 bg-white/[0.045] p-7 shadow-[0_30px_80px_-24px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl sm:p-8`}
         >
-          {/* Avatar / logo with gradient ring + online dot */}
+          {/* Avatar / logo with red glow ring + online dot */}
           <div className="flex justify-center">
             <div className="relative">
               <div
                 aria-hidden="true"
-                className="absolute -inset-[3px] rounded-full bg-[conic-gradient(from_0deg,#3ee07c,#1cc36c,#0a8f4a,#3ee07c)] opacity-90 blur-[1px]"
+                className="absolute -inset-[6px] rounded-full bg-[radial-gradient(circle,rgba(255,40,40,0.55)_0%,rgba(255,40,40,0)_70%)] blur-md"
               />
               <div
-                aria-label="Logo MAXIME"
-                className="relative flex h-[118px] w-[118px] items-center justify-center rounded-full bg-[#0c1b13] shadow-[0_18px_40px_rgba(0,0,0,0.45),inset_0_0_0_1px_rgba(255,255,255,0.05)]"
+                aria-hidden="true"
+                className="absolute -inset-[2px] rounded-full bg-[conic-gradient(from_120deg,#ff4d4d,#b30000,#ff7a7a,#ff4d4d)] opacity-95"
+              />
+              <img
+                src="/maxime-logo.png"
+                alt="Logo MAXIME Spécialiste"
+                width={120}
+                height={120}
+                loading="eager"
+                decoding="async"
+                className="relative h-[120px] w-[120px] rounded-full object-cover shadow-[0_18px_40px_rgba(190,10,10,0.45)] ring-1 ring-white/10"
+              />
+              <span
+                aria-hidden="true"
+                className="absolute -bottom-1 right-0 flex h-[24px] w-[24px] items-center justify-center rounded-full border-2 border-[#0a0405] bg-[#22c55e] shadow-[0_2px_8px_rgba(34,197,94,0.55)]"
               >
-                <span className="bg-gradient-to-br from-white via-[#d8ffe5] to-[#7af0a8] bg-clip-text text-[3.4rem] font-[800] leading-none tracking-[-0.06em] text-transparent">
-                  M
-                </span>
-                <span
-                  aria-hidden="true"
-                  className="absolute -bottom-1 right-1 flex h-[26px] w-[26px] items-center justify-center rounded-full border-2 border-[#0c1b13] bg-[#1cc36c] text-[0.9rem] shadow-[0_2px_8px_rgba(28,195,108,0.6)]"
-                >
-                  🌐
-                </span>
-              </div>
+                <span className="h-1.5 w-1.5 rounded-full bg-white/95" />
+              </span>
             </div>
           </div>
 
@@ -280,10 +285,10 @@ export default function Home() {
           <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[0.72rem] font-medium tracking-wide text-white/80">
             <span className="relative flex h-2 w-2">
               <span
-                className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#3ee07c] opacity-75"
+                className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22c55e] opacity-75"
                 style={{ animation: "maximePulse 2.4s ease-in-out infinite" }}
               />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#3ee07c]" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#22c55e]" />
             </span>
             En ligne · Communauté privée active
           </div>
@@ -351,8 +356,8 @@ export default function Home() {
           }`}
         >
           <span className="relative flex h-2 w-2 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#3ee07c] opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-[#3ee07c]" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22c55e] opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-[#22c55e]" />
           </span>
           <p className="truncate text-[0.72rem] font-medium tracking-[-0.005em] text-white/90">
             <span className="font-[650] text-white">{activeToast.name}</span>{" "}
