@@ -23,7 +23,6 @@ const {
 
 vi.mock("./telegramBot", () => ({
   sendTelegramMessage: sendTelegramMessageMock,
-  createPerUserInviteLink: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("./telegramReminders", async () => {

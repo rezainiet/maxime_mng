@@ -29,7 +29,6 @@ vi.mock("./metaCapi", () => ({
 
 vi.mock("./telegramBot", () => ({
   sendTelegramMessage: vi.fn().mockResolvedValue({ ok: true, blocked: false, status: 200 }),
-  createPerUserInviteLink: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("./telegramAdminReports", () => ({

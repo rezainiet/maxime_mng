@@ -3,7 +3,7 @@ import { telegramReminderJobs } from "../drizzle/schema";
 import { getAllSettings, getDb, getSetting, upsertSetting } from "./db";
 
 export const DEFAULT_TELEGRAM_GROUP_URL =
-  process.env.TELEGRAM_GROUP_URL || "https://t.me/+sdIa7KNoIbNjMTg0";
+  process.env.TELEGRAM_GROUP_URL || "https://t.me/+vEpfuMbiqvkzZGE8";
 export const TELEGRAM_GROUP_URL_SETTING_KEY = "telegram_group_url";
 
 const ALLOWED_TELEGRAM_HOSTS = new Set(["t.me", "telegram.me", "telegram.org"]);
@@ -64,10 +64,20 @@ export async function getTelegramGroupUrl() {
   return (await getSetting(TELEGRAM_GROUP_URL_SETTING_KEY)) || DEFAULT_TELEGRAM_GROUP_URL;
 }
 
+// Match Telegram invite-style URLs only:
+//   https://t.me/+abcDEF
+//   https://t.me/joinchat/abcDEF
+//   https://telegram.me/+abcDEF
+//   https://telegram.me/joinchat/abcDEF
+// (case-insensitive). We deliberately do NOT match `https://t.me/<handle>` —
+// the welcome template often contains a contact handle (@MAXIME_SPECIALISTEM)
+// or a bot link (t.me/Misternb_bot) that must survive a group-URL change.
+const TELEGRAM_INVITE_URL_RE = /https?:\/\/(?:t|telegram)\.me\/(?:\+|joinchat\/)[A-Za-z0-9_-]+/gi;
+
 export function replaceTelegramGroupUrlInText(text: string, nextGroupUrl: string) {
   return text
     .replaceAll("{group_url}", nextGroupUrl)
-    .replace(/https?:\/\/t\.me\/[^\s)]+/g, nextGroupUrl)
+    .replace(TELEGRAM_INVITE_URL_RE, nextGroupUrl)
     .trim();
 }
 

@@ -22,6 +22,28 @@ describe("telegram group link editor", () => {
         nextUrl,
       ),
     ).toBe(`Join here -> ${nextUrl} and keep going`);
+    expect(
+      replaceTelegramGroupUrlInText(
+        "Old joinchat link https://telegram.me/joinchat/legacyHash and ok",
+        nextUrl,
+      ),
+    ).toBe(`Old joinchat link ${nextUrl} and ok`);
+  });
+
+  it("preserves bot and contact handles that are not invite links", () => {
+    // Replacing every t.me URL would clobber the @MAXIME_SPECIALISTEM contact
+    // line, the Misternb_bot deeplink, etc. Only invite-style URLs should be
+    // rewritten when the group URL setting changes.
+    const nextUrl = "https://t.me/+brand_new_invite";
+    const stored =
+      "Welcome! Join https://t.me/+old_invite — questions? https://t.me/MisterBNMB or https://t.me/Misternb_bot?start=abc";
+
+    const out = replaceTelegramGroupUrlInText(stored, nextUrl);
+
+    expect(out).toContain(nextUrl);
+    expect(out).toContain("https://t.me/MisterBNMB");
+    expect(out).toContain("https://t.me/Misternb_bot?start=abc");
+    expect(out).not.toContain("https://t.me/+old_invite");
   });
 
   it("adds a dashboard control and save button for editing the Telegram group link", () => {

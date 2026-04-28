@@ -51,7 +51,18 @@
       "Bash(grep -n \"^function MetricCard\\\\|^const MetricCard\\\\|const SubscriberConversionRow\\\\|^}\\\\$\" \"C:/Users/Reza/Downloads/misterb-full-project/landing-page/client/src/pages/Dashboard.tsx\")",
       "Bash(git init *)",
       "Bash(git branch *)",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "Bash(where railway *)",
+      "Bash(railway service *)",
+      "Bash(git ls-remote *)",
+      "Bash(railway domain *)",
+      "Bash(DATABASE_URL='mysql://root:dulCQompwcUsygbXCoAjuKFQWhXqszVa@shuttle.proxy.rlwy.net:31670/railway' npx drizzle-kit migrate)",
+      "WebFetch(domain:maxime.bimr.eu)",
+      "Bash(pnpm run *)",
+      "Bash(git restore *)",
+      "Bash(npx vitest *)",
+      "Bash(railway list *)",
+      "Bash(railway ssh *)"
     ]
   }
 }
