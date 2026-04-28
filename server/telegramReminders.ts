@@ -3,7 +3,7 @@ import { botStarts, telegramReminderJobs } from "../drizzle/schema";
 import { tryAcquireLease } from "./_core/leaderLease";
 import { log } from "./_core/logger";
 import { getDb, getSetting } from "./db";
-import { sendTelegramMessage } from "./telegramBot";
+import { buildJoinGroupKeyboard, sendTelegramMessage } from "./telegramBot";
 import { DEFAULT_TELEGRAM_GROUP_URL, getTelegramGroupUrl } from "./telegramGroupLink";
 
 const WORKER_NAME = "telegram_reminders";
@@ -378,6 +378,10 @@ async function getBotStartState(telegramUserId: string) {
 
 export async function processDueTelegramReminderJobs() {
   const jobs = await getDueTelegramReminderJobs();
+  // Resolve the group URL once per tick (it lives in site_settings) — reading
+  // it per job would multiply the DB hits without changing the result.
+  const groupUrl = jobs.length > 0 ? await getTelegramGroupUrl() : DEFAULT_TELEGRAM_GROUP_URL;
+  const replyMarkup = buildJoinGroupKeyboard(groupUrl);
 
   for (const job of jobs) {
     await markJobProcessing(job.id);
@@ -399,7 +403,7 @@ export async function processDueTelegramReminderJobs() {
       continue;
     }
 
-    const result = await sendTelegramMessage(job.chatId, job.messageText);
+    const result = await sendTelegramMessage(job.chatId, job.messageText, { replyMarkup });
 
     if (result.ok) {
       await markJobSent(job.id);

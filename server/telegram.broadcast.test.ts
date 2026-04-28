@@ -12,9 +12,13 @@ const { sendTelegramMessageMock, dbMocks } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("./telegramBot", () => ({
-  sendTelegramMessage: sendTelegramMessageMock,
-}));
+vi.mock("./telegramBot", async () => {
+  const actual = await vi.importActual<typeof import("./telegramBot")>("./telegramBot");
+  return {
+    ...actual,
+    sendTelegramMessage: sendTelegramMessageMock,
+  };
+});
 
 vi.mock("./_core/leaderLease", () => ({
   tryAcquireLease: vi.fn().mockResolvedValue(true),
@@ -22,7 +26,12 @@ vi.mock("./_core/leaderLease", () => ({
 
 vi.mock("./db", () => dbMocks);
 
+vi.mock("./telegramGroupLink", () => ({
+  getTelegramGroupUrl: vi.fn().mockResolvedValue("https://t.me/+vEpfuMbiqvkzZGE8"),
+}));
+
 import { processBroadcastTick, renderBroadcastMessage } from "./telegramBroadcast";
+import { buildJoinGroupKeyboard } from "./telegramBot";
 
 describe("renderBroadcastMessage", () => {
   it("substitutes {firstName} and {first_name}", () => {
@@ -77,9 +86,10 @@ describe("processBroadcastTick", () => {
 
     expect(dbMocks.markBroadcastJobProcessing).toHaveBeenCalledWith(42);
     expect(sendTelegramMessageMock).toHaveBeenCalledTimes(3);
-    expect(sendTelegramMessageMock).toHaveBeenNthCalledWith(1, "u1", "Hello Anna");
-    expect(sendTelegramMessageMock).toHaveBeenNthCalledWith(2, "u2", "Hello Bob");
-    expect(sendTelegramMessageMock).toHaveBeenNthCalledWith(3, "u3", "Hello toi");
+    const expectedKeyboard = buildJoinGroupKeyboard("https://t.me/+vEpfuMbiqvkzZGE8");
+    expect(sendTelegramMessageMock).toHaveBeenNthCalledWith(1, "u1", "Hello Anna", { replyMarkup: expectedKeyboard });
+    expect(sendTelegramMessageMock).toHaveBeenNthCalledWith(2, "u2", "Hello Bob", { replyMarkup: expectedKeyboard });
+    expect(sendTelegramMessageMock).toHaveBeenNthCalledWith(3, "u3", "Hello toi", { replyMarkup: expectedKeyboard });
 
     expect(dbMocks.markBroadcastDelivery).toHaveBeenCalledWith({ id: 1, status: "sent" });
     expect(dbMocks.markBroadcastDelivery).toHaveBeenCalledWith({

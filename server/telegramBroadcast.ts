@@ -8,7 +8,8 @@ import {
   markBroadcastDelivery,
   markBroadcastJobProcessing,
 } from "./db";
-import { sendTelegramMessage } from "./telegramBot";
+import { buildJoinGroupKeyboard, sendTelegramMessage } from "./telegramBot";
+import { getTelegramGroupUrl } from "./telegramGroupLink";
 
 const WORKER_NAME = "telegram_broadcast";
 
@@ -50,13 +51,19 @@ export async function processBroadcastTick() {
     return { processed: 0, jobId: job.id };
   }
 
+  // Attach the same join-group button to every broadcast message so users see
+  // the same CTA regardless of which message type the bot just sent. Resolved
+  // once per tick (one DB read per batch instead of per delivery).
+  const groupUrl = await getTelegramGroupUrl();
+  const replyMarkup = buildJoinGroupKeyboard(groupUrl);
+
   let sent = 0;
   let blocked = 0;
   let failed = 0;
 
   for (const delivery of deliveries) {
     const messageText = renderBroadcastMessage(job.messageText, delivery.firstName);
-    const result = await sendTelegramMessage(delivery.chatId, messageText);
+    const result = await sendTelegramMessage(delivery.chatId, messageText, { replyMarkup });
 
     if (result.ok) {
       await markBroadcastDelivery({ id: delivery.id, status: "sent" });

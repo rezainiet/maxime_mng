@@ -25,7 +25,7 @@ import {
   buildTelegramAdminReportText,
   isTelegramAdminAuthorized,
 } from "./telegramAdminReports";
-import { sendTelegramMessage } from "./telegramBot";
+import { buildJoinGroupKeyboard, sendTelegramMessage } from "./telegramBot";
 import {
   DEFAULT_TELEGRAM_GROUP_URL,
   getTelegramGroupUrl,
@@ -538,7 +538,9 @@ export function setupTelegramWebhook(app: Express) {
             { firstName: telegramMessage.from.first_name || null, groupUrl },
           )
         : buildDefaultWelcomeMessage(groupUrl);
-      await sendTelegramMessage(telegramMessage.from.id, welcomeBody);
+      await sendTelegramMessage(telegramMessage.from.id, welcomeBody, {
+        replyMarkup: buildJoinGroupKeyboard(groupUrl),
+      });
     }
 
     const memberUpdate = update.chat_member || update.my_chat_member;

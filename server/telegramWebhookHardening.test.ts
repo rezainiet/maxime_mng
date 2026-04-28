@@ -27,9 +27,13 @@ vi.mock("./metaCapi", () => ({
   fireSubscribeEvent: vi.fn(),
 }));
 
-vi.mock("./telegramBot", () => ({
-  sendTelegramMessage: vi.fn().mockResolvedValue({ ok: true, blocked: false, status: 200 }),
-}));
+vi.mock("./telegramBot", async () => {
+  const actual = await vi.importActual<typeof import("./telegramBot")>("./telegramBot");
+  return {
+    ...actual,
+    sendTelegramMessage: vi.fn().mockResolvedValue({ ok: true, blocked: false, status: 200 }),
+  };
+});
 
 vi.mock("./telegramAdminReports", () => ({
   buildTelegramAdminReportText: vi.fn(),

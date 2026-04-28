@@ -7,9 +7,37 @@ export type SendTelegramMessageResult = {
   description?: string;
 };
 
+// Telegram inline keyboard shape — kept loose because we only build URL buttons.
+// The Telegram API accepts any JSON-serializable object here.
+export type TelegramReplyMarkup = Record<string, unknown>;
+
+export type SendTelegramMessageOptions = {
+  replyMarkup?: TelegramReplyMarkup | null;
+  // Default true — we always send rich text. Override only if a future caller
+  // needs plain text (e.g. for messages with literal `<` characters).
+  parseMode?: "HTML" | "Markdown" | "MarkdownV2" | null;
+  // Default true to keep messages compact. Reminders/welcomes don't want
+  // Telegram's preview card stealing focus from the join button.
+  disableWebPagePreview?: boolean;
+};
+
+/**
+ * Build the inline keyboard with a single URL button that opens the private
+ * group. Used by the welcome, the 7 reminders, and broadcasts so every
+ * user-facing bot message exposes a consistent join CTA.
+ */
+export function buildJoinGroupKeyboard(groupUrl: string): TelegramReplyMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "🚀 Rejoindre le groupe privé", url: groupUrl }],
+    ],
+  };
+}
+
 export async function sendTelegramMessage(
   chatId: number | string,
   text: string,
+  options?: SendTelegramMessageOptions,
 ): Promise<SendTelegramMessageResult> {
   if (!BOT_TOKEN) {
     return {
@@ -21,15 +49,21 @@ export async function sendTelegramMessage(
   }
 
   try {
+    const body: Record<string, unknown> = {
+      chat_id: chatId,
+      text,
+      parse_mode: options?.parseMode === undefined ? "HTML" : options.parseMode,
+      disable_web_page_preview:
+        options?.disableWebPagePreview === undefined ? true : options.disableWebPagePreview,
+    };
+    if (options?.replyMarkup) {
+      body.reply_markup = options.replyMarkup;
+    }
+
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-        disable_web_page_preview: true,
-      }),
+      body: JSON.stringify(body),
     });
 
     const payload = (await response.json().catch(() => null)) as

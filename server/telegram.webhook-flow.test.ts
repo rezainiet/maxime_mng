@@ -21,9 +21,13 @@ const {
   fireSubscribeEventMock: vi.fn(),
 }));
 
-vi.mock("./telegramBot", () => ({
-  sendTelegramMessage: sendTelegramMessageMock,
-}));
+vi.mock("./telegramBot", async () => {
+  const actual = await vi.importActual<typeof import("./telegramBot")>("./telegramBot");
+  return {
+    ...actual,
+    sendTelegramMessage: sendTelegramMessageMock,
+  };
+});
 
 vi.mock("./telegramReminders", async () => {
   const actual = await vi.importActual<typeof import("./telegramReminders")>("./telegramReminders");
