@@ -13,10 +13,15 @@ import { checkRateLimit, getClientIp, recordSuccess } from "./_core/rateLimit";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import {
+  countBroadcastRecipients,
+  createBroadcastJob,
+  enqueueBroadcastDeliveries,
   getAllJoins,
   getAllSettings,
   getBotStartStats,
   getBotStartsByCampaign,
+  getBroadcastJobById,
+  getBroadcastRecipients,
   getDashboardStats,
   getDashboardStatsByPreset,
   getDailyReportStats,
@@ -30,6 +35,7 @@ import {
   getRecordEventStats,
   getRetryableMetaEvents,
   getTodayStats,
+  listRecentBroadcastJobs,
   updateBotStartMetaStatus,
   getWeeklyJoins,
   insertUtmSession,
@@ -118,6 +124,8 @@ const TELEGRAM_SETTING_ALLOWLIST = new Set<string>([
 ]);
 
 const TELEGRAM_MESSAGE_MAX_LENGTH = 4000; // Telegram message limit is 4096; cap a bit lower to leave room for footer.
+// Broadcasts have no auto-appended footer, so we can use the full Telegram cap.
+const BROADCAST_MESSAGE_MAX_LENGTH = 4096;
 
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -767,6 +775,99 @@ export const appRouter = router({
       // become visible to the operator (the function used to swallow errors
       // with a single console.error).
       return getRecordEventStats();
+    }),
+
+    // === Broadcast ===
+    // Sends a single message to every bot starter (botBlocked=0). Creates a
+    // job + per-recipient delivery rows, then returns immediately. The
+    // telegramBroadcast worker drains the deliveries asynchronously, throttled
+    // to stay below Telegram's ~30 msg/sec limit.
+    broadcastRecipientCount: publicProcedure.input(dashboardAuthInput).query(async ({ input }) => {
+      if (!isDashboardTokenValid(input.token)) {
+        return { error: "Unauthorized" } as const;
+      }
+      const count = await countBroadcastRecipients();
+      return { count, messageMaxLength: BROADCAST_MESSAGE_MAX_LENGTH } as const;
+    }),
+
+    broadcastSend: publicProcedure
+      .input(z.object({ token: z.string().min(1), message: z.string() }))
+      .mutation(async ({ input }) => {
+        if (!isDashboardTokenValid(input.token)) {
+          return { success: false, error: "Unauthorized" } as const;
+        }
+        const trimmed = input.message.trim();
+        if (!trimmed) {
+          return { success: false, error: "Message must not be empty." } as const;
+        }
+        if (trimmed.length > BROADCAST_MESSAGE_MAX_LENGTH) {
+          return {
+            success: false,
+            error: `Message too long (max ${BROADCAST_MESSAGE_MAX_LENGTH} characters).`,
+          } as const;
+        }
+
+        const recipients = await getBroadcastRecipients();
+        if (recipients.length === 0) {
+          return { success: false, error: "No eligible recipients." } as const;
+        }
+
+        const jobId = await createBroadcastJob({
+          messageText: trimmed,
+          totalRecipients: recipients.length,
+          createdBy: "dashboard",
+        });
+        if (!jobId) {
+          return { success: false, error: "Could not create broadcast job." } as const;
+        }
+        await enqueueBroadcastDeliveries(jobId, recipients);
+
+        log.info("dashboard.broadcastSend", "broadcast_queued", {
+          jobId,
+          recipients: recipients.length,
+        });
+
+        return { success: true, jobId, recipients: recipients.length } as const;
+      }),
+
+    broadcastStatus: publicProcedure
+      .input(z.object({ token: z.string().min(1), jobId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        if (!isDashboardTokenValid(input.token)) {
+          return { error: "Unauthorized" } as const;
+        }
+        const job = await getBroadcastJobById(input.jobId);
+        if (!job) return { error: "Not found" } as const;
+        return {
+          id: job.id,
+          status: job.status,
+          totalRecipients: job.totalRecipients,
+          sentCount: job.sentCount,
+          blockedCount: job.blockedCount,
+          failedCount: job.failedCount,
+          createdAt: job.createdAt,
+          startedAt: job.startedAt,
+          completedAt: job.completedAt,
+        } as const;
+      }),
+
+    broadcastList: publicProcedure.input(dashboardAuthInput).query(async ({ input }) => {
+      if (!isDashboardTokenValid(input.token)) {
+        return { error: "Unauthorized" } as const;
+      }
+      const jobs = await listRecentBroadcastJobs(20);
+      return jobs.map((job) => ({
+        id: job.id,
+        status: job.status,
+        totalRecipients: job.totalRecipients,
+        sentCount: job.sentCount,
+        blockedCount: job.blockedCount,
+        failedCount: job.failedCount,
+        messagePreview: job.messageText.slice(0, 200),
+        createdAt: job.createdAt,
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+      }));
     }),
   }),
 });

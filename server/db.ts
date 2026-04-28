@@ -1,9 +1,13 @@
-import { and, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   botStarts,
+  broadcastDeliveries,
+  broadcastJobs,
   dailyStats,
   InsertBotStart,
+  InsertBroadcastDelivery,
+  InsertBroadcastJob,
   InsertMetaEventLog,
   InsertSiteSetting,
   InsertTelegramJoin,
@@ -1043,6 +1047,195 @@ export async function upsertSetting(settingKey: string, settingValue: string) {
   await db.insert(siteSettings).values(values).onDuplicateKeyUpdate({
     set: { settingValue, updatedAt: new Date() },
   });
+}
+
+// === Broadcast ===
+//
+// Recipients = bot starters who haven't blocked the bot. We deliberately do NOT
+// gate on `joinedAt` — the broadcast targets the same audience the reminder
+// system targets ("everyone who started the bot"), regardless of whether they
+// joined the channel.
+
+export type BroadcastRecipient = {
+  telegramUserId: string;
+  chatId: string;
+  firstName: string | null;
+};
+
+export async function getBroadcastRecipients(): Promise<BroadcastRecipient[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      telegramUserId: botStarts.telegramUserId,
+      firstName: botStarts.telegramFirstName,
+    })
+    .from(botStarts)
+    .where(eq(botStarts.botBlocked, 0));
+
+  return rows.map((row) => ({
+    telegramUserId: row.telegramUserId,
+    chatId: row.telegramUserId,
+    firstName: row.firstName,
+  }));
+}
+
+export async function countBroadcastRecipients(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const [row]: any = await db.execute(
+    sql`SELECT COUNT(*) AS n FROM bot_starts WHERE botBlocked = 0`,
+  );
+  return Number(row?.[0]?.n ?? row?.n ?? 0) || 0;
+}
+
+export async function createBroadcastJob(input: {
+  messageText: string;
+  totalRecipients: number;
+  createdBy?: string | null;
+}): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const values: InsertBroadcastJob = {
+    messageText: input.messageText,
+    totalRecipients: input.totalRecipients,
+    createdBy: input.createdBy ?? null,
+  };
+  const result: any = await db.insert(broadcastJobs).values(values);
+  const insertId = Number(result?.[0]?.insertId ?? result?.insertId ?? 0);
+  return insertId || null;
+}
+
+export async function enqueueBroadcastDeliveries(
+  broadcastJobId: number,
+  recipients: BroadcastRecipient[],
+): Promise<void> {
+  if (recipients.length === 0) return;
+  const db = await getDb();
+  if (!db) return;
+
+  // Chunk to keep the bulk insert under MySQL's max packet size and to avoid
+  // multi-second blocking inserts on big lists.
+  const CHUNK = 500;
+  for (let i = 0; i < recipients.length; i += CHUNK) {
+    const chunk = recipients.slice(i, i + CHUNK);
+    const values: InsertBroadcastDelivery[] = chunk.map((r) => ({
+      broadcastJobId,
+      telegramUserId: r.telegramUserId,
+      chatId: r.chatId,
+      firstName: r.firstName,
+    }));
+    // ON DUPLICATE KEY UPDATE is a no-op here — the unique (jobId, userId)
+    // index protects against accidental re-enqueue. Use insert.ignore so a
+    // retry doesn't fail.
+    await db.insert(broadcastDeliveries).values(values).onDuplicateKeyUpdate({
+      set: { updatedAt: new Date() },
+    });
+  }
+}
+
+export async function getNextProcessableBroadcastJob() {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(broadcastJobs)
+    .where(or(eq(broadcastJobs.status, "pending"), eq(broadcastJobs.status, "processing")))
+    .orderBy(asc(broadcastJobs.createdAt))
+    .limit(1);
+  return rows[0] || null;
+}
+
+export async function markBroadcastJobProcessing(jobId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(broadcastJobs)
+    .set({ status: "processing", startedAt: sql`COALESCE(startedAt, NOW())` })
+    .where(eq(broadcastJobs.id, jobId));
+}
+
+export async function getNextPendingBroadcastDeliveries(jobId: number, limit: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(broadcastDeliveries)
+    .where(
+      and(
+        eq(broadcastDeliveries.broadcastJobId, jobId),
+        eq(broadcastDeliveries.status, "pending"),
+      ),
+    )
+    .orderBy(asc(broadcastDeliveries.id))
+    .limit(limit);
+}
+
+export async function markBroadcastDelivery(args: {
+  id: number;
+  status: "sent" | "blocked" | "failed";
+  errorDescription?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const now = new Date();
+  await db
+    .update(broadcastDeliveries)
+    .set({
+      status: args.status,
+      errorDescription: args.errorDescription ?? null,
+      attemptCount: sql`${broadcastDeliveries.attemptCount} + 1`,
+      sentAt: args.status === "sent" ? now : null,
+      failedAt: args.status === "failed" || args.status === "blocked" ? now : null,
+      updatedAt: now,
+    })
+    .where(eq(broadcastDeliveries.id, args.id));
+}
+
+export async function bumpBroadcastJobCounters(args: {
+  jobId: number;
+  sent?: number;
+  blocked?: number;
+  failed?: number;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(broadcastJobs)
+    .set({
+      sentCount: sql`${broadcastJobs.sentCount} + ${args.sent ?? 0}`,
+      blockedCount: sql`${broadcastJobs.blockedCount} + ${args.blocked ?? 0}`,
+      failedCount: sql`${broadcastJobs.failedCount} + ${args.failed ?? 0}`,
+    })
+    .where(eq(broadcastJobs.id, args.jobId));
+}
+
+export async function finalizeBroadcastJobIfDone(jobId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const [pendingRow]: any = await db.execute(
+    sql`SELECT COUNT(*) AS n FROM broadcast_deliveries WHERE broadcastJobId = ${jobId} AND status = 'pending'`,
+  );
+  const pending = Number(pendingRow?.[0]?.n ?? pendingRow?.n ?? 0) || 0;
+  if (pending > 0) return false;
+  await db
+    .update(broadcastJobs)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(eq(broadcastJobs.id, jobId));
+  return true;
+}
+
+export async function getBroadcastJobById(jobId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(broadcastJobs).where(eq(broadcastJobs.id, jobId)).limit(1);
+  return rows[0] || null;
+}
+
+export async function listRecentBroadcastJobs(limit = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(broadcastJobs).orderBy(desc(broadcastJobs.createdAt)).limit(limit);
 }
 
 export async function getJoinStats() {

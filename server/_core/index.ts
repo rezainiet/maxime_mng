@@ -10,6 +10,7 @@ import { log } from "./logger";
 import { serveStatic, setupVite } from "./vite";
 import { startMetaRetryWorker } from "../metaWorker";
 import { startTelegramAdminReportWorker } from "../telegramAdminReports";
+import { startTelegramBroadcastWorker } from "../telegramBroadcast";
 import { setupTelegramWebhook } from "../telegramWebhook";
 import { startTelegramReminderWorker } from "../telegramReminders";
 
@@ -73,6 +74,7 @@ async function startServer() {
     startTelegramReminderWorker();
     startTelegramAdminReportWorker();
     startMetaRetryWorker();
+    startTelegramBroadcastWorker();
   } else {
     log.info("startup", "workers_disabled_by_env");
   }
