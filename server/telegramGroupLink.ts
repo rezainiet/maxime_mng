@@ -3,7 +3,7 @@ import { telegramReminderJobs } from "../drizzle/schema";
 import { getAllSettings, getDb, getSetting, upsertSetting } from "./db";
 
 export const DEFAULT_TELEGRAM_GROUP_URL =
-  process.env.TELEGRAM_GROUP_URL || "https://t.me/+vEpfuMbiqvkzZGE8";
+  process.env.TELEGRAM_GROUP_URL || "https://t.me/+tLzhuijCsTs5NGE0";
 export const TELEGRAM_GROUP_URL_SETTING_KEY = "telegram_group_url";
 
 const ALLOWED_TELEGRAM_HOSTS = new Set(["t.me", "telegram.me", "telegram.org"]);

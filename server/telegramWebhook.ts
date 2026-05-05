@@ -11,9 +11,11 @@ import {
   getTelegramJoinByUserId,
   getTelegramLinkageByUserId,
   getUtmSessionByToken,
+  hasSentSubscribeForTelegramUser,
   insertTelegramJoin,
   markBotStartJoined,
   resolveTelegramLinkage,
+  setBotStartPersonalInviteLink,
   tryRecordTelegramUpdateId,
   updateBotStartMetaStatus,
   updateMetaEventLog,
@@ -25,7 +27,13 @@ import {
   buildTelegramAdminReportText,
   isTelegramAdminAuthorized,
 } from "./telegramAdminReports";
-import { buildJoinGroupKeyboard, sendTelegramMessage } from "./telegramBot";
+import {
+  approveChatJoinRequest,
+  buildJoinGroupKeyboard,
+  createPersonalInviteLink,
+  declineChatJoinRequest,
+  sendTelegramMessage,
+} from "./telegramBot";
 import {
   DEFAULT_TELEGRAM_GROUP_URL,
   getTelegramGroupUrl,
@@ -121,6 +129,25 @@ interface TelegramChatMemberUpdate {
   old_chat_member: { user: TelegramUser; status: string };
 }
 
+interface TelegramChatJoinRequest {
+  chat: TelegramChat;
+  from: TelegramUser;
+  user_chat_id?: number;
+  date: number;
+  bio?: string;
+  invite_link?: {
+    invite_link: string;
+    creator?: TelegramUser;
+    creates_join_request?: boolean;
+    is_primary?: boolean;
+    is_revoked?: boolean;
+    name?: string;
+    expire_date?: number;
+    member_limit?: number;
+    pending_join_request_count?: number;
+  };
+}
+
 interface TelegramUpdate {
   update_id: number;
   message?: {
@@ -132,6 +159,7 @@ interface TelegramUpdate {
   };
   chat_member?: TelegramChatMemberUpdate;
   my_chat_member?: TelegramChatMemberUpdate;
+  chat_join_request?: TelegramChatJoinRequest;
 }
 
 type DecodedStartPayload = {
@@ -184,12 +212,12 @@ async function resolveLandingSession(sessionToken?: string | null, funnelToken?:
 async function fireSubscribeForStart(args: {
   telegramUserId: string;
   telegramUsername?: string | null;
+  telegramFirstName?: string | null;
+  telegramLastName?: string | null;
   eventTime: number;
   session?: Awaited<ReturnType<typeof resolveLandingSession>>;
   sessionToken: string | null;
   funnelToken: string | null;
-  ip: string | null;
-  ua: string | null;
 }) {
   const existing = await getBotStartByTelegramUserId(args.telegramUserId);
   // Idempotent: only fire once per user. Subsequent /starts skip Meta if it
@@ -203,6 +231,16 @@ async function fireSubscribeForStart(args: {
   ) {
     // A prior /start already created the meta_event_log row — let the
     // metaWorker's retry logic drive it to completion. Don't double-create.
+    return;
+  }
+  // Cross-path dedupe: a bypass-join Subscribe may have fired before this
+  // user ever ran /start. Skip Meta in that case so we never send two
+  // Subscribes for the same Telegram user.
+  if (await hasSentSubscribeForTelegramUser(args.telegramUserId)) {
+    log.info("telegramWebhook", "subscribe_skipped_already_sent_for_user", {
+      telegramUserId: args.telegramUserId,
+      origin: "start",
+    });
     return;
   }
 
@@ -225,11 +263,17 @@ async function fireSubscribeForStart(args: {
   });
 
   try {
+    // Only forward IP/UA captured from the user's browser on the landing
+    // visit. Falling back to the Telegram webhook request would send Telegram
+    // datacenter IPs / bot UA strings to Meta — those match no real user and
+    // tank Event Match Quality. Better to send nothing than wrong data.
     const metaResult = await fireSubscribeEvent({
       eventId,
       eventTime: Math.floor(args.eventTime),
       telegramUserId: args.telegramUserId,
       telegramUsername: args.telegramUsername || undefined,
+      telegramFirstName: args.telegramFirstName || undefined,
+      telegramLastName: args.telegramLastName || undefined,
       visitorId: args.session?.visitorId || undefined,
       fbclid: args.session?.fbclid || undefined,
       fbp: args.session?.fbp || undefined,
@@ -239,8 +283,8 @@ async function fireSubscribeForStart(args: {
       utmCampaign: args.session?.utmCampaign || undefined,
       utmContent: args.session?.utmContent || undefined,
       sourceUrl: args.session?.landingPage || undefined,
-      userAgent: args.session?.userAgent || args.ua || undefined,
-      ipAddress: args.session?.ipAddress || args.ip || undefined,
+      userAgent: args.session?.userAgent || undefined,
+      ipAddress: args.session?.ipAddress || undefined,
     });
 
     const status = metaResult.success ? "sent" : metaResult.retryable ? "retrying" : "failed";
@@ -285,6 +329,111 @@ async function fireSubscribeForStart(args: {
   }
 }
 
+async function fireSubscribeForJoin(args: {
+  telegramUserId: string;
+  telegramUsername?: string | null;
+  telegramFirstName?: string | null;
+  telegramLastName?: string | null;
+  channelId: string;
+  eventTime: number;
+  ip: string | null;
+  ua: string | null;
+  session?: Awaited<ReturnType<typeof resolveLandingSession>>;
+  sessionToken: string | null;
+  funnelToken: string | null;
+}): Promise<{ eventId: string; status: "sent" | "retrying" | "failed" } | null> {
+  // Cross-path dedupe: don't double-send if /start already fired Subscribe.
+  if (await hasSentSubscribeForTelegramUser(args.telegramUserId)) {
+    log.info("telegramWebhook", "subscribe_skipped_already_sent_for_user", {
+      telegramUserId: args.telegramUserId,
+      origin: "join",
+    });
+    return null;
+  }
+
+  // Stable per-user-per-channel id so duplicate join webhooks dedupe at Meta.
+  const eventId = `tg_join_${args.telegramUserId}_${args.channelId.replace(/-/g, "n")}`;
+
+  await createMetaEventLog({
+    eventType: "Subscribe",
+    eventScope: "telegram_join",
+    eventId,
+    funnelToken: args.funnelToken,
+    sessionToken: args.sessionToken,
+    telegramUserId: args.telegramUserId,
+    status: "queued",
+    retryable: 0,
+    attemptCount: 0,
+  });
+
+  try {
+    const metaResult = await fireSubscribeEvent({
+      eventId,
+      eventTime: Math.floor(args.eventTime),
+      telegramUserId: args.telegramUserId,
+      telegramUsername: args.telegramUsername || undefined,
+      telegramFirstName: args.telegramFirstName || undefined,
+      telegramLastName: args.telegramLastName || undefined,
+      visitorId: args.session?.visitorId || undefined,
+      fbclid: args.session?.fbclid || undefined,
+      fbp: args.session?.fbp || undefined,
+      sessionCreatedAt: args.session?.createdAt,
+      utmSource: args.session?.utmSource || undefined,
+      utmMedium: args.session?.utmMedium || undefined,
+      utmCampaign: args.session?.utmCampaign || undefined,
+      utmContent: args.session?.utmContent || undefined,
+      sourceUrl: args.session?.landingPage || undefined,
+      // Telegram webhook IP/UA would tank EMQ; only forward landing data when
+      // available, exactly like fireSubscribeForStart.
+      userAgent: args.session?.userAgent || undefined,
+      ipAddress: args.session?.ipAddress || undefined,
+    });
+
+    const status = metaResult.success ? "sent" : metaResult.retryable ? "retrying" : "failed";
+
+    await updateMetaEventLog(eventId, {
+      requestPayloadJson: metaResult.requestBody ? JSON.stringify(metaResult.requestBody) : null,
+      responsePayloadJson: metaResult.responseBody ? JSON.stringify(metaResult.responseBody) : null,
+      httpStatus: metaResult.httpStatus ?? null,
+      status,
+      errorCode: metaResult.errorCode ?? null,
+      errorSubcode: metaResult.errorSubcode ?? null,
+      errorMessage: metaResult.errorMessage ?? null,
+      retryable: metaResult.retryable ? 1 : 0,
+      attemptCount: 1,
+      attemptedAt: new Date(),
+      completedAt: metaResult.success ? new Date() : null,
+      nextRetryAt: metaResult.retryable ? new Date(Date.now() + META_RETRY_DELAY_MS) : null,
+    });
+
+    log.info("telegramWebhook", "subscribe_fired_on_join", {
+      telegramUserId: args.telegramUserId,
+      channelId: args.channelId,
+      eventId,
+      status,
+    });
+
+    return { eventId, status };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.error("telegramWebhook", "meta_join_unexpected_error", {
+      telegramUserId: args.telegramUserId,
+      eventId,
+      error: message,
+    });
+    await updateMetaEventLog(eventId, {
+      status: "retrying",
+      errorCode: "unexpected_error",
+      errorMessage: message,
+      retryable: 1,
+      attemptCount: 1,
+      attemptedAt: new Date(),
+      nextRetryAt: new Date(Date.now() + META_RETRY_DELAY_MS),
+    });
+    return { eventId, status: "retrying" };
+  }
+}
+
 async function handleNewMember(
   user: TelegramUser,
   chat: TelegramChat,
@@ -316,11 +465,40 @@ async function handleNewMember(
       ? "unattributed_join"
       : "bypass_join";
 
-  // Subscribe fires on /start, NOT on join. We mirror the /start-time Meta
-  // event id/status onto the join row so dashboard queries that join
-  // telegram_joins.metaEventId → meta_event_logs still work.
-  const startMetaEventId = storedBotStart?.metaSubscribeEventId || null;
-  const startMetaStatus = storedBotStart?.metaSubscribeStatus || null;
+  // Default: mirror the /start-time Meta event id/status onto the join row
+  // so the dashboard's join → meta_event_logs lookup still works for
+  // attributed users who hit /start before joining.
+  let joinMetaEventId = storedBotStart?.metaSubscribeEventId || null;
+  let joinMetaStatus: "pending" | "sent" | "failed" | "retrying" | "abandoned" | null =
+    (storedBotStart?.metaSubscribeStatus as typeof joinMetaStatus) || null;
+
+  // If the user joined the channel WITHOUT going through /start, /start
+  // never fired Subscribe — fire it here so Meta sees the conversion.
+  // Idempotency is enforced inside fireSubscribeForJoin.
+  let firedSubscribeOnJoin: { eventId: string; status: "sent" | "retrying" | "failed" } | null = null;
+  if (!storedBotStart || storedBotStart.metaSubscribeStatus !== "sent") {
+    firedSubscribeOnJoin = await fireSubscribeForJoin({
+      telegramUserId,
+      telegramUsername: user.username || null,
+      telegramFirstName: user.first_name || null,
+      telegramLastName: user.last_name || null,
+      channelId,
+      eventTime: date,
+      ip,
+      ua,
+      session,
+      sessionToken: resolvedSessionToken || session?.sessionToken || null,
+      funnelToken: resolvedFunnelToken || session?.funnelToken || null,
+    });
+    if (firedSubscribeOnJoin) {
+      joinMetaEventId = firedSubscribeOnJoin.eventId;
+      joinMetaStatus = firedSubscribeOnJoin.status === "sent"
+        ? "sent"
+        : firedSubscribeOnJoin.status === "retrying"
+          ? "retrying"
+          : "failed";
+    }
+  }
 
   await insertTelegramJoin({
     telegramUserId,
@@ -338,8 +516,8 @@ async function handleNewMember(
     utmTerm: session?.utmTerm || null,
     fbclid: session?.fbclid || null,
     fbp: session?.fbp || null,
-    metaEventId: startMetaEventId,
-    metaEventSent: startMetaStatus || undefined,
+    metaEventId: joinMetaEventId,
+    metaEventSent: joinMetaStatus || undefined,
     sessionToken: resolvedSessionToken || session?.sessionToken || null,
     ipAddress: session?.ipAddress || ip,
     userAgent: session?.userAgent || ua,
@@ -352,12 +530,13 @@ async function handleNewMember(
     resolveTelegramLinkage(telegramUserId),
   ]);
 
-  log.info("telegramWebhook", "join_recorded_no_meta_fire", {
+  log.info("telegramWebhook", "join_recorded", {
     telegramUserId,
     channelId,
     attributionStatus,
-    mirroredMetaStatus: startMetaStatus,
-    mirroredMetaEventId: startMetaEventId,
+    mirroredMetaStatus: joinMetaStatus,
+    mirroredMetaEventId: joinMetaEventId,
+    firedSubscribeOnJoin: Boolean(firedSubscribeOnJoin),
   });
 }
 
@@ -497,39 +676,74 @@ export function setupTelegramWebhook(app: Express) {
         fbp: session?.fbp || null,
       });
 
-      // Fire Meta Subscribe at /start time (the conversion moment) — not at
-      // join time. /start is the optimization signal we want Meta to learn.
-      // Skip for organic_start (no session/funnel attribution) to keep the
-      // optimization signal clean.
-      const isAttributed = Boolean(session) || Boolean(decoded?.sessionToken) || Boolean(decoded?.funnelToken);
-      if (isAttributed) {
-        await fireSubscribeForStart({
-          telegramUserId: userId,
-          telegramUsername: telegramMessage.from.username,
-          eventTime: telegramMessage.date,
-          session,
-          sessionToken: decoded?.sessionToken || linkage?.sessionToken || session?.sessionToken || null,
-          funnelToken: decoded?.funnelToken || linkage?.funnelToken || session?.funnelToken || null,
-          ip,
-          ua,
-        });
-      }
+      // Fire Meta Subscribe on EVERY /start — attributed or organic. Meta
+      // needs every conversion to optimize. fireSubscribeForStart enforces
+      // per-user idempotency (and cross-path dedupe with bypass-join fires).
+      await fireSubscribeForStart({
+        telegramUserId: userId,
+        telegramUsername: telegramMessage.from.username,
+        telegramFirstName: telegramMessage.from.first_name || null,
+        telegramLastName: telegramMessage.from.last_name || null,
+        eventTime: telegramMessage.date,
+        session,
+        sessionToken: decoded?.sessionToken || linkage?.sessionToken || session?.sessionToken || null,
+        funnelToken: decoded?.funnelToken || linkage?.funnelToken || session?.funnelToken || null,
+      });
 
-      // Single static group URL for everyone — the welcome AND every reminder
-      // ship the same link, sourced from the admin setting (falls back to env
-      // TELEGRAM_GROUP_URL → DEFAULT_TELEGRAM_GROUP_URL). Per-user invite links
-      // are deliberately NOT used here: one stable URL is what we want users to
-      // see across all touchpoints.
-      const [welcomeMsg, groupUrl] = await Promise.all([
+      // Per-user invite link with creates_join_request=true so every join via
+      // this URL routes through chat_join_request → bot approves only users
+      // with a bot_starts row. We cache the link on the bot_starts row so
+      // re-/start AND the full reminder sequence reuse the same URL within the
+      // 30-day expiry. Falls back to the static admin group URL only on
+      // Telegram API failure — preferable to blocking the welcome flow.
+      const channelId = process.env.TELEGRAM_CHANNEL_ID || "";
+      const [welcomeMsg, staticGroupUrl, freshBotStart] = await Promise.all([
         getSetting("welcome_message"),
         getTelegramGroupUrl(),
+        getBotStartByTelegramUserId(userId),
       ]);
+
+      let groupUrl = staticGroupUrl;
+      const cachedLink = freshBotStart?.personalInviteLink || null;
+      const cachedExpiresAt = freshBotStart?.personalInviteLinkExpiresAt
+        ? new Date(freshBotStart.personalInviteLinkExpiresAt)
+        : null;
+      const cacheStillValid =
+        cachedLink &&
+        cachedExpiresAt &&
+        cachedExpiresAt.getTime() - Date.now() > 60 * 60 * 1000; // 1h safety margin.
+
+      if (cacheStillValid && cachedLink) {
+        groupUrl = cachedLink;
+        log.info("telegramWebhook", "personal_invite_link_reused_from_cache", {
+          telegramUserId: userId,
+        });
+      } else if (channelId) {
+        const personal = await createPersonalInviteLink({
+          chatId: channelId,
+          telegramUserId: userId,
+        });
+        if (personal.ok) {
+          groupUrl = personal.inviteLink;
+          await setBotStartPersonalInviteLink(userId, personal.inviteLink, personal.expiresAt);
+          log.info("telegramWebhook", "personal_invite_link_created", {
+            telegramUserId: userId,
+            expiresAt: personal.expiresAt.toISOString(),
+          });
+        } else {
+          log.warn("telegramWebhook", "personal_invite_link_failed_using_static", {
+            telegramUserId: userId,
+            error: personal.error,
+          });
+        }
+      }
 
       await scheduleTelegramReminderSequence({
         telegramUserId: userId,
         chatId: userId,
         firstName: telegramMessage.from.first_name || null,
         startedAt: new Date(telegramMessage.date * 1000),
+        groupUrlOverride: groupUrl,
       });
 
       const welcomeBody = welcomeMsg
@@ -562,6 +776,60 @@ export function setupTelegramWebhook(app: Express) {
         }
       }
     }
+
+    if (update.chat_join_request) {
+      await handleChatJoinRequest(update.chat_join_request);
+    }
+  }
+
+  /**
+   * Approve channel join requests only for users who have a bot_starts row —
+   * meaning they completed /start. Anyone else (forwarded link, leaked link,
+   * unknown user) is declined. This is the actual gate that enforces "all
+   * users must enter via the bot": the personal-link-with-creates_join_request
+   * generated in /start is the only invite path, and unknown users hitting it
+   * get rejected here.
+   */
+  async function handleChatJoinRequest(req: TelegramChatJoinRequest) {
+    const telegramUserId = String(req.from.id);
+    const channelId = String(req.chat.id);
+
+    const botStart = await getBotStartByTelegramUserId(telegramUserId);
+    if (botStart) {
+      const result = await approveChatJoinRequest({
+        chatId: channelId,
+        telegramUserId,
+      });
+      if (result.ok) {
+        log.info("telegramWebhook", "join_request_approved", {
+          telegramUserId,
+          channelId,
+          username: req.from.username || null,
+          inviteLinkName: req.invite_link?.name || null,
+          attribution: botStart.attributionStatus,
+        });
+      } else {
+        log.error("telegramWebhook", "join_request_approve_failed", {
+          telegramUserId,
+          channelId,
+          error: result.error,
+        });
+      }
+      return;
+    }
+
+    const result = await declineChatJoinRequest({
+      chatId: channelId,
+      telegramUserId,
+    });
+    log.warn("telegramWebhook", "join_request_declined_no_bot_start", {
+      telegramUserId,
+      channelId,
+      username: req.from.username || null,
+      inviteLinkName: req.invite_link?.name || null,
+      declineOk: result.ok,
+      declineError: result.ok ? null : result.error,
+    });
   }
 
   app.post("/api/telegram/setup-webhook", async (req: Request, res: Response) => {
@@ -582,7 +850,12 @@ export function setupTelegramWebhook(app: Express) {
       body: JSON.stringify({
         url: webhookUrl,
         secret_token: getWebhookSecret(),
-        allowed_updates: ["chat_member", "my_chat_member", "message"],
+        allowed_updates: [
+          "chat_member",
+          "my_chat_member",
+          "message",
+          "chat_join_request",
+        ],
       }),
     });
 

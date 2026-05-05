@@ -180,6 +180,12 @@ export const botStarts = mysqlTable("bot_starts", {
   joinedAt: timestamp("joinedAt"),
   startedAt: timestamp("startedAt").defaultNow().notNull(),
   firstStartedAt: timestamp("firstStartedAt"),
+  // Per-user channel invite link generated at /start with creates_join_request=true.
+  // Cached so the welcome and every reminder ship the same URL without re-hitting
+  // Telegram. Joins via this link route through the bot's chat_join_request
+  // handler which only approves users with a bot_starts row — closing bypass.
+  personalInviteLink: varchar("personalInviteLink", { length: 256 }),
+  personalInviteLinkExpiresAt: timestamp("personalInviteLinkExpiresAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

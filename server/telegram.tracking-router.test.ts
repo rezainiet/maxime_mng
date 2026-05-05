@@ -34,8 +34,8 @@ describe("telegram tracking router", () => {
 
     expect(created.success).toBe(true);
     expect(created.sessionToken.length).toBeGreaterThan(20);
-    expect(created.telegramBotUrl).toContain("https://t.me/Misternb_bot?start=");
-    expect(created.telegramDeepLink).toContain("tg://resolve?domain=Misternb_bot&start=");
+    expect(created.telegramBotUrl).toContain("https://t.me/Maxime1_bot?start=");
+    expect(created.telegramDeepLink).toContain("tg://resolve?domain=Maxime1_bot&start=");
     expect(created.payload.length).toBeGreaterThan(10);
 
     const storedBeforeClick = await getUtmSessionByToken(created.sessionToken);

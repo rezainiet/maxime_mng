@@ -911,6 +911,22 @@ export async function getRecentMetaEventLogs(limit = 50) {
   return db.select().from(metaEventLogs).orderBy(desc(metaEventLogs.createdAt)).limit(limit);
 }
 
+export async function hasSentSubscribeForTelegramUser(telegramUserId: string) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ eventId: metaEventLogs.eventId, status: metaEventLogs.status })
+    .from(metaEventLogs)
+    .where(
+      and(
+        eq(metaEventLogs.telegramUserId, telegramUserId),
+        eq(metaEventLogs.eventType, "Subscribe"),
+      ),
+    )
+    .limit(10);
+  return rows.some((r) => r.status === "sent" || r.status === "queued" || r.status === "retrying");
+}
+
 export async function upsertBotStart(start: InsertBotStart) {
   const db = await getDb();
   if (!db) return;
@@ -1020,6 +1036,22 @@ export async function markBotStartJoined(telegramUserId: string) {
   await db
     .update(botStarts)
     .set({ joinedAt: new Date() })
+    .where(eq(botStarts.telegramUserId, telegramUserId));
+}
+
+export async function setBotStartPersonalInviteLink(
+  telegramUserId: string,
+  inviteLink: string,
+  expiresAt: Date,
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(botStarts)
+    .set({
+      personalInviteLink: inviteLink,
+      personalInviteLinkExpiresAt: expiresAt,
+    })
     .where(eq(botStarts.telegramUserId, telegramUserId));
 }
 

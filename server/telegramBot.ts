@@ -34,6 +34,155 @@ export function buildJoinGroupKeyboard(groupUrl: string): TelegramReplyMarkup {
   };
 }
 
+export type CreatePersonalInviteLinkArgs = {
+  chatId: string | number;
+  telegramUserId: string;
+  // Expiry in seconds from now. Default 30d so the link survives the full
+  // reminder sequence (15min → 1m).
+  expireSeconds?: number;
+};
+
+export type CreatePersonalInviteLinkResult =
+  | { ok: true; inviteLink: string; expiresAt: Date }
+  | { ok: false; error: string };
+
+/**
+ * Create a per-user channel invite link with `creates_join_request=true` so
+ * every click routes through the chat_join_request webhook for explicit bot
+ * approval. The bot rejects requests from users without a bot_starts row,
+ * which is what enforces "all users must /start". Caller should fall back to
+ * the static group URL if this fails (transient API error, etc.) — better to
+ * ship a working welcome than to block the flow.
+ *
+ * NOTE: Telegram's API forbids `member_limit` when `creates_join_request=true`,
+ * so single-use is replaced by the approval gate (which is strictly stronger).
+ */
+export async function createPersonalInviteLink(
+  args: CreatePersonalInviteLinkArgs,
+): Promise<CreatePersonalInviteLinkResult> {
+  if (!BOT_TOKEN) return { ok: false, error: "missing_bot_token" };
+
+  const expireSeconds = args.expireSeconds ?? 30 * 24 * 60 * 60;
+  const expireDate = Math.floor(Date.now() / 1000) + expireSeconds;
+  const body: Record<string, unknown> = {
+    chat_id: args.chatId,
+    creates_join_request: true,
+    name: `user:${args.telegramUserId}`.slice(0, 32),
+    expire_date: expireDate,
+  };
+
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/createChatInviteLink`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; description?: string; result?: { invite_link?: string } }
+      | null;
+    if (!response.ok || !payload?.ok) {
+      return {
+        ok: false,
+        error: payload?.description || `HTTP ${response.status}`,
+      };
+    }
+    const link = payload?.result?.invite_link;
+    if (typeof link !== "string" || !link) {
+      return { ok: false, error: "no_invite_link_in_response" };
+    }
+    return {
+      ok: true,
+      inviteLink: link,
+      expiresAt: new Date(expireDate * 1000),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export type ApproveJoinRequestArgs = {
+  chatId: string | number;
+  telegramUserId: string | number;
+};
+
+export type ApproveJoinRequestResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function approveChatJoinRequest(
+  args: ApproveJoinRequestArgs,
+): Promise<ApproveJoinRequestResult> {
+  if (!BOT_TOKEN) return { ok: false, error: "missing_bot_token" };
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/approveChatJoinRequest`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: args.chatId,
+          user_id: args.telegramUserId,
+        }),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; description?: string }
+      | null;
+    if (!response.ok || !payload?.ok) {
+      return {
+        ok: false,
+        error: payload?.description || `HTTP ${response.status}`,
+      };
+    }
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function declineChatJoinRequest(
+  args: ApproveJoinRequestArgs,
+): Promise<ApproveJoinRequestResult> {
+  if (!BOT_TOKEN) return { ok: false, error: "missing_bot_token" };
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/declineChatJoinRequest`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: args.chatId,
+          user_id: args.telegramUserId,
+        }),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; description?: string }
+      | null;
+    if (!response.ok || !payload?.ok) {
+      return {
+        ok: false,
+        error: payload?.description || `HTTP ${response.status}`,
+      };
+    }
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export async function sendTelegramMessage(
   chatId: number | string,
   text: string,

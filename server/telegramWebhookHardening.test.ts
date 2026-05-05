@@ -21,6 +21,8 @@ vi.mock("./db", () => ({
   updateBotStartMetaStatus: vi.fn().mockResolvedValue(undefined),
   getAllJoins: vi.fn().mockResolvedValue([]),
   getSetting: vi.fn().mockResolvedValue(null),
+  hasSentSubscribeForTelegramUser: vi.fn().mockResolvedValue(false),
+  setBotStartPersonalInviteLink: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./metaCapi", () => ({
@@ -182,8 +184,14 @@ describe("Telegram webhook hardening", () => {
     expect(vi.mocked(upsertBotStart)).toHaveBeenCalledTimes(1);
   });
 
-  it("does not fire Meta Subscribe on join (Subscribe fires on /start instead)", async () => {
+  it("fires Meta Subscribe on bypass joins so Meta sees users who skipped /start", async () => {
     vi.mocked(getTelegramJoinByUserId).mockResolvedValue(undefined);
+    vi.mocked(fireSubscribeEvent).mockResolvedValue({
+      success: true,
+      eventId: "tg_join_7777_n1003932081102",
+      httpStatus: 200,
+      retryable: false,
+    } as any);
 
     const joinUpdate = {
       update_id: 999_010,
@@ -199,13 +207,17 @@ describe("Telegram webhook hardening", () => {
     await postUpdate(app.baseUrl, joinUpdate);
     await sleep(100);
 
-    // Subscribe is now /start-driven. Joins never call Meta directly — they
-    // only insert the analytics row.
-    expect(vi.mocked(fireSubscribeEvent)).not.toHaveBeenCalled();
+    // Subscribe MUST fire on bypass joins — that's the whole point of the
+    // funnel-leak fix. The eventId is per-user-per-channel for Meta dedupe.
+    expect(vi.mocked(fireSubscribeEvent)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(fireSubscribeEvent).mock.calls[0][0].eventId).toMatch(
+      /^tg_join_7777_/,
+    );
+    // The analytics row is still inserted alongside the Meta fire.
     expect(vi.mocked(insertTelegramJoin)).toHaveBeenCalledTimes(1);
-    // No legacy "abandoned" log row for bypass joins — that pattern is gone.
-    expect(vi.mocked(createMetaEventLog)).not.toHaveBeenCalledWith(
-      expect.objectContaining({ errorCode: "organic_bypass_skipped" }),
+    // The meta_event_log row carries the join scope, not the legacy skip row.
+    expect(vi.mocked(createMetaEventLog)).toHaveBeenCalledWith(
+      expect.objectContaining({ eventScope: "telegram_join", eventType: "Subscribe" }),
     );
   });
 

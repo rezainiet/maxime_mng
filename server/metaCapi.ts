@@ -182,6 +182,8 @@ export interface CapiEventData {
   eventTime: number;
   telegramUserId: string;
   telegramUsername?: string;
+  telegramFirstName?: string | null;
+  telegramLastName?: string | null;
   visitorId?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
@@ -210,6 +212,12 @@ export function buildSubscribePayload(data: CapiEventData) {
   if (data.ipAddress) userData.client_ip_address = data.ipAddress;
   if (data.userAgent) userData.client_user_agent = data.userAgent;
   if (data.fbp) userData.fbp = data.fbp;
+
+  // Telegram first/last name lift Event Match Quality when sent in user_data
+  // (custom_data fields are NOT used for matching by Meta). Hashed lower-case
+  // per Meta's Advanced Matching format.
+  if (data.telegramFirstName) userData.fn = hashValue(data.telegramFirstName);
+  if (data.telegramLastName) userData.ln = hashValue(data.telegramLastName);
 
   const fbc = buildServerFbc(data.fbclid, data.sessionCreatedAt);
   if (fbc) userData.fbc = fbc;

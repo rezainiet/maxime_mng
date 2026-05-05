@@ -58,7 +58,7 @@ import {
 import { buildDefaultWelcomeMessage } from "./telegramWebhook";
 import { getTelegramGroupUrl } from "./telegramGroupLink";
 
-const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || "Misternb_bot";
+const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || "Maxime1_bot";
 
 function randomSessionToken() {
   // 16 raw bytes → 22 base64url chars. Keeps the Telegram /start payload safely
@@ -87,7 +87,7 @@ function getHeaderString(value: string | string[] | undefined, fallback = "") {
 }
 
 const TRACKING_BUDGET = { limit: 120, windowMs: 60_000 } as const;
-const LOGIN_BUDGET = { limit: 8, windowMs: 15 * 60_000, blockMs: 15 * 60_000 } as const;
+const LOGIN_BUDGET = { limit: 5, windowMs: 15 * 60_000, blockMs: 30 * 60_000 } as const;
 
 function isAllowedTrackingOrigin(origin: string, host: string) {
   if (!origin) return true; // many privacy-respecting browsers strip Origin on same-origin POST

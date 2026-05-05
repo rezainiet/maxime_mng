@@ -238,26 +238,42 @@ async function postTrackingRecord(input: {
   sessionToken?: string;
   funnelToken?: string;
 }) {
+  const url = "/api/trpc/tracking.record?batch=1";
+  const body = JSON.stringify({
+    0: {
+      json: {
+        eventType: input.eventType,
+        eventSource: input.eventSource,
+        visitorId: input.visitorId,
+        eventId: input.eventId,
+        sourceUrl: input.sourceUrl || (typeof window !== "undefined" ? window.location.href : undefined),
+        sessionToken: input.sessionToken,
+        funnelToken: input.funnelToken,
+        fbp: getFbpValue(),
+      },
+    },
+  });
+
+  // Prefer sendBeacon for fire-on-unload semantics: the browser queues the
+  // request to flush even after window.location.assign, which is exactly what
+  // we need on the CTA click → Telegram redirect path.
+  if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+    try {
+      const blob = new Blob([body], { type: "application/json" });
+      const queued = navigator.sendBeacon(url, blob);
+      if (queued) return;
+    } catch {
+      // Fall through to fetch keepalive.
+    }
+  }
+
   try {
-    await fetch("/api/trpc/tracking.record?batch=1", {
+    await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       keepalive: true,
-      body: JSON.stringify({
-        0: {
-          json: {
-            eventType: input.eventType,
-            eventSource: input.eventSource,
-            visitorId: input.visitorId,
-            eventId: input.eventId,
-            sourceUrl: input.sourceUrl || (typeof window !== "undefined" ? window.location.href : undefined),
-            sessionToken: input.sessionToken,
-            funnelToken: input.funnelToken,
-            fbp: getFbpValue(),
-          },
-        },
-      }),
+      body,
     });
   } catch {
     // Tracking must never block the landing flow.
@@ -345,12 +361,15 @@ export async function trackTelegramGroupClick(source = "telegram_group_cta") {
 
   // Fire the Lead pixel + server CAPI BEFORE the heavy session resolve so we
   // capture the high-intent click signal even if the user closes the tab
-  // mid-flight. Browser fbq is synchronous; the server CAPI uses keepalive so
-  // it survives page navigation.
+  // mid-flight. Browser fbq is synchronous; the server post uses sendBeacon
+  // (queued by the browser to flush after navigation), with a fetch+keepalive
+  // fallback. We *await* it here so the request is actually on the wire
+  // before window.location.assign, but cap it at 250 ms so a stalled network
+  // can never block the redirect.
   const leadEventId = randomId("lead");
   if (!shouldDebounceClick(`${source}__lead`)) {
     fireLeadPixel(leadEventId);
-    void postTrackingRecord({
+    const leadPost = postTrackingRecord({
       eventType: "lead",
       eventSource: source,
       visitorId: getVisitorId(),
@@ -358,6 +377,10 @@ export async function trackTelegramGroupClick(source = "telegram_group_cta") {
       sessionToken: readStoredSession()?.sessionToken,
       funnelToken: readStoredSession()?.funnelToken || fallbackFunnelToken,
     });
+    await Promise.race([
+      leadPost,
+      new Promise<void>((resolve) => setTimeout(resolve, 250)),
+    ]);
   }
 
   const session = await resolveSessionWithRetry();

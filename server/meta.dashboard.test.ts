@@ -295,8 +295,10 @@ describe("meta dashboard procedures", () => {
     expect(webhookSource).toContain("updateBotStartMetaStatus");
     expect(webhookSource).toContain('metaResult.success ? "sent" : metaResult.retryable ? "retrying" : "failed"');
     expect(webhookSource).toContain("const resolvedSessionToken = linkage?.sessionToken || storedBotStart?.sessionToken || null");
-    expect(webhookSource).toContain("fbp: session?.fbp || undefined");
-    expect(webhookSource).toContain("sessionCreatedAt: session?.createdAt");
+    // fbp is forwarded from the captured landing session in both /start and
+    // bypass-join Meta fires.
+    expect(webhookSource).toContain("fbp: args.session?.fbp || undefined");
+    expect(webhookSource).toContain("sessionCreatedAt: args.session?.createdAt");
     expect(webhookSource).toContain("createMetaEventLog({");
     expect(webhookSource).toContain("updateMetaEventLog(eventId");
     expect(webhookSource).not.toContain("[Meta CAPI] /start error:");
