@@ -8,7 +8,12 @@ describe("Dashboard Telegram labels", () => {
     expect(dashboardSource).toContain('whatsapp_click: "Telegram bot click"');
     expect(dashboardSource).toContain('title="Clic bot Telegram"');
     expect(dashboardSource).toContain('title="Start bot"');
-    expect(dashboardSource).toContain('title="Membres rejoints"');
+    // Renamed from "Membres rejoints" — the old label collided with the
+    // telegram_joins-derived count and confused the operator. The new label
+    // makes explicit that this KPI counts bot_starts.joinedAt only.
+    expect(dashboardSource).toContain('title="Starts → joined"');
+    expect(dashboardSource).toContain('title="Total joins"');
+    expect(dashboardSource).toContain('title="Bypass joins"');
     expect(dashboardSource).toContain('title="Contact direct"');
     expect(dashboardSource).toContain('>Clic bot</th>');
     expect(dashboardSource).toContain('>Contact direct</th>');

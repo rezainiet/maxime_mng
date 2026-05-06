@@ -16,6 +16,7 @@ import {
   countBroadcastRecipients,
   createBroadcastJob,
   enqueueBroadcastDeliveries,
+  getActivityFeed,
   getAllJoins,
   getAllSettings,
   getBotStartStats,
@@ -25,11 +26,18 @@ import {
   getDashboardStats,
   getDashboardStatsByPreset,
   getDailyReportStats,
+  getFunnelSnapshot,
+  getJoinRequestDecisionStats,
+  getJoinRollingWindows,
   getJoinStats,
   getJoinsByCampaign,
   getLiveStatsSinceMidnight,
+  getMetaErrorBreakdown,
+  getMetaEventLogByEventId,
+  getMetaEventLogsFiltered,
   getMetaEventSummary,
   getRecentBotStartsWithMetaStatus,
+  getRecentJoinRequestDecisions,
   getRecentMetaActivityWindow,
   getRecentMetaDebugLog,
   getRecordEventStats,
@@ -48,6 +56,7 @@ import {
 } from "./db";
 import { sendLead, sendPageView } from "./facebookCapi";
 import { buildServerFbc, retryStoredMetaRequest } from "./metaCapi";
+import { META_MAX_ATTEMPTS } from "./metaWorker";
 import { getUtmSessionByToken, getSetting } from "./db";
 import { syncTelegramGroupUrlContent, TELEGRAM_GROUP_URL_SETTING_KEY, validateTelegramGroupUrl } from "./telegramGroupLink";
 import {
@@ -498,16 +507,27 @@ export const appRouter = router({
         return { error: "Unauthorized" } as const;
       }
 
-      const [joinStats, joinsByCampaign, botStartStats, botStartsByCampaign, joins, dailyReport, weeklyJoins] =
-        await Promise.all([
-          getJoinStats(),
-          getJoinsByCampaign(),
-          getBotStartStats(),
-          getBotStartsByCampaign(),
-          getAllJoins(100),
-          getDailyReportStats(),
-          getWeeklyJoins(),
-        ]);
+      const [
+        joinStats,
+        joinsByCampaign,
+        botStartStats,
+        botStartsByCampaign,
+        joins,
+        dailyReport,
+        weeklyJoins,
+        rollingJoins,
+        decisionStats,
+      ] = await Promise.all([
+        getJoinStats(),
+        getJoinsByCampaign(),
+        getBotStartStats(),
+        getBotStartsByCampaign(),
+        getAllJoins(100),
+        getDailyReportStats(),
+        getWeeklyJoins(),
+        getJoinRollingWindows(),
+        getJoinRequestDecisionStats(),
+      ]);
 
       return {
         joinStats,
@@ -517,8 +537,144 @@ export const appRouter = router({
         joins,
         dailyReport,
         weeklyJoins,
+        rollingJoins,
+        decisionStats,
       } as const;
     }),
+    funnelSnapshot: publicProcedure
+      .input(
+        dashboardAuthInput.extend({
+          window: z.enum(["last1h", "last24h", "today", "last7d"]).optional(),
+        }),
+      )
+      .query(async ({ input }) => {
+        if (!isDashboardTokenValid(input.token)) {
+          return { error: "Unauthorized" } as const;
+        }
+        const window = input.window || "today";
+        const [snapshot, last1h, last24h, last7d] = await Promise.all([
+          getFunnelSnapshot(window),
+          getFunnelSnapshot("last1h"),
+          getFunnelSnapshot("last24h"),
+          getFunnelSnapshot("last7d"),
+        ]);
+        return { selected: snapshot, last1h, last24h, last7d } as const;
+      }),
+    activityFeed: publicProcedure
+      .input(
+        dashboardAuthInput.extend({
+          limit: z.number().int().min(5).max(200).optional(),
+        }),
+      )
+      .query(async ({ input }) => {
+        if (!isDashboardTokenValid(input.token)) {
+          return { error: "Unauthorized" } as const;
+        }
+        const entries = await getActivityFeed(input.limit ?? 50);
+        return { entries } as const;
+      }),
+    recentJoinDecisions: publicProcedure
+      .input(
+        dashboardAuthInput.extend({
+          limit: z.number().int().min(1).max(100).optional(),
+        }),
+      )
+      .query(async ({ input }) => {
+        if (!isDashboardTokenValid(input.token)) {
+          return { error: "Unauthorized" } as const;
+        }
+        const rows = await getRecentJoinRequestDecisions(input.limit ?? 25);
+        return { rows } as const;
+      }),
+    metaEvents: publicProcedure
+      .input(
+        dashboardAuthInput.extend({
+          status: z
+            .enum(["all", "queued", "sent", "failed", "retrying", "abandoned"])
+            .optional(),
+          eventType: z.enum(["all", "PageView", "Lead", "Subscribe"]).optional(),
+          eventScope: z
+            .enum(["all", "pageview", "lead", "telegram_start", "telegram_join"])
+            .optional(),
+          limit: z.number().int().min(1).max(200).optional(),
+        }),
+      )
+      .query(async ({ input }) => {
+        if (!isDashboardTokenValid(input.token)) {
+          return { error: "Unauthorized" } as const;
+        }
+        const [rows, breakdown, summary] = await Promise.all([
+          getMetaEventLogsFiltered({
+            status: input.status,
+            eventType: input.eventType,
+            eventScope: input.eventScope,
+            limit: input.limit ?? 50,
+          }),
+          getMetaErrorBreakdown(24),
+          getMetaEventSummary(),
+        ]);
+        return { rows, breakdown, summary } as const;
+      }),
+    retryMetaEvent: publicProcedure
+      .input(
+        dashboardAuthInput.extend({
+          eventId: z.string().min(1),
+        }),
+      )
+      .mutation(async ({ input }) => {
+        if (!isDashboardTokenValid(input.token)) {
+          return { error: "Unauthorized" } as const;
+        }
+        const candidate = await getMetaEventLogByEventId(input.eventId);
+        if (!candidate) {
+          return { success: false, error: "event_not_found" } as const;
+        }
+        const nextAttempt = (candidate.attemptCount || 0) + 1;
+        const result = await retryStoredMetaRequest(
+          candidate.eventId,
+          candidate.requestPayloadJson,
+        );
+        const status = result.success
+          ? "sent"
+          : result.retryable
+            ? nextAttempt >= META_MAX_ATTEMPTS
+              ? "abandoned"
+              : "retrying"
+            : "failed";
+
+        await updateMetaEventLog(candidate.eventId, {
+          status,
+          requestPayloadJson: result.requestBody
+            ? JSON.stringify(result.requestBody)
+            : candidate.requestPayloadJson,
+          responsePayloadJson: result.responseBody
+            ? JSON.stringify(result.responseBody)
+            : null,
+          httpStatus: result.httpStatus ?? null,
+          errorCode: result.errorCode ?? null,
+          errorSubcode: result.errorSubcode ?? null,
+          errorMessage: result.errorMessage ?? null,
+          retryable: result.retryable ? 1 : 0,
+          attemptCount: nextAttempt,
+          attemptedAt: new Date(),
+          completedAt: result.success ? new Date() : null,
+          nextRetryAt: status === "retrying" ? new Date(Date.now() + 5 * 60 * 1000) : null,
+        });
+
+        if (candidate.telegramUserId) {
+          await updateBotStartMetaStatus(candidate.telegramUserId, status, result.eventId);
+        }
+        if (candidate.eventScope === "telegram_join") {
+          await updateTelegramJoinMetaStatusByEventId(candidate.eventId, status);
+        }
+
+        return {
+          success: result.success,
+          status,
+          httpStatus: result.httpStatus ?? null,
+          errorMessage: result.errorMessage ?? null,
+        } as const;
+      }),
     settings: publicProcedure.input(dashboardAuthInput).query(async ({ input }) => {
       if (!isDashboardTokenValid(input.token)) {
         return { error: "Unauthorized" } as const;
@@ -602,7 +758,7 @@ export const appRouter = router({
           const status = result.success
             ? "sent"
             : result.retryable
-              ? nextAttempt >= 5
+              ? nextAttempt >= META_MAX_ATTEMPTS
                 ? "abandoned"
                 : "retrying"
               : "failed";

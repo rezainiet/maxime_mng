@@ -11,12 +11,14 @@ import {
   InsertMetaEventLog,
   InsertSiteSetting,
   InsertTelegramJoin,
+  InsertTelegramJoinRequestAudit,
   InsertTelegramLinkage,
   InsertTrackingEvent,
   InsertUser,
   InsertUtmSession,
   metaEventLogs,
   siteSettings,
+  telegramJoinRequestAudit,
   telegramJoins,
   telegramLinkages,
   telegramUpdateLog,
@@ -1839,4 +1841,370 @@ export async function getTelegramRecipientsByUsernames(usernames: string[]) {
     telegramFirstName: string | null;
     startedAt: Date;
   }>;
+}
+
+// ═══════════════════════════════════════════════════════════
+// JOIN REQUEST AUDIT (approved / declined chat_join_request)
+// ═══════════════════════════════════════════════════════════
+
+export async function recordJoinRequestDecision(input: InsertTelegramJoinRequestAudit) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(telegramJoinRequestAudit).values(input);
+}
+
+export async function getJoinRequestDecisionStats() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      totalApproved: 0,
+      totalDeclined: 0,
+      todayApproved: 0,
+      todayDeclined: 0,
+      last1hApproved: 0,
+      last1hDeclined: 0,
+      last24hApproved: 0,
+      last24hDeclined: 0,
+      bypassAttemptsTotal: 0,
+      bypassAttemptsToday: 0,
+    };
+  }
+
+  // bypassAttempts = declined-because-no-bot-start. The webhook only declines
+  // for that one reason today, so `decision='declined'` is effectively a
+  // bypass attempt count, but we still gate on hadBotStart=0 in case the
+  // decline-reason set widens later.
+  const [rows]: any = await db.execute(sql`
+    SELECT
+      COALESCE(SUM(CASE WHEN decision = 'approved' THEN 1 ELSE 0 END), 0) AS totalApproved,
+      COALESCE(SUM(CASE WHEN decision = 'declined' THEN 1 ELSE 0 END), 0) AS totalDeclined,
+      COALESCE(SUM(CASE WHEN decision = 'approved' AND DATE(decidedAt) = CURRENT_DATE() THEN 1 ELSE 0 END), 0) AS todayApproved,
+      COALESCE(SUM(CASE WHEN decision = 'declined' AND DATE(decidedAt) = CURRENT_DATE() THEN 1 ELSE 0 END), 0) AS todayDeclined,
+      COALESCE(SUM(CASE WHEN decision = 'approved' AND decidedAt >= NOW() - INTERVAL 1 HOUR THEN 1 ELSE 0 END), 0) AS last1hApproved,
+      COALESCE(SUM(CASE WHEN decision = 'declined' AND decidedAt >= NOW() - INTERVAL 1 HOUR THEN 1 ELSE 0 END), 0) AS last1hDeclined,
+      COALESCE(SUM(CASE WHEN decision = 'approved' AND decidedAt >= NOW() - INTERVAL 24 HOUR THEN 1 ELSE 0 END), 0) AS last24hApproved,
+      COALESCE(SUM(CASE WHEN decision = 'declined' AND decidedAt >= NOW() - INTERVAL 24 HOUR THEN 1 ELSE 0 END), 0) AS last24hDeclined,
+      COALESCE(SUM(CASE WHEN decision = 'declined' AND hadBotStart = 0 THEN 1 ELSE 0 END), 0) AS bypassAttemptsTotal,
+      COALESCE(SUM(CASE WHEN decision = 'declined' AND hadBotStart = 0 AND DATE(decidedAt) = CURRENT_DATE() THEN 1 ELSE 0 END), 0) AS bypassAttemptsToday
+    FROM telegram_join_request_audit
+  `);
+
+  const r = rows?.[0] || {};
+  return {
+    totalApproved: Number(r.totalApproved || 0),
+    totalDeclined: Number(r.totalDeclined || 0),
+    todayApproved: Number(r.todayApproved || 0),
+    todayDeclined: Number(r.todayDeclined || 0),
+    last1hApproved: Number(r.last1hApproved || 0),
+    last1hDeclined: Number(r.last1hDeclined || 0),
+    last24hApproved: Number(r.last24hApproved || 0),
+    last24hDeclined: Number(r.last24hDeclined || 0),
+    bypassAttemptsTotal: Number(r.bypassAttemptsTotal || 0),
+    bypassAttemptsToday: Number(r.bypassAttemptsToday || 0),
+  };
+}
+
+export async function getRecentJoinRequestDecisions(limit = 25) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(telegramJoinRequestAudit)
+    .orderBy(desc(telegramJoinRequestAudit.decidedAt))
+    .limit(limit);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ROLLING-WINDOW JOIN STATS (P2)
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Joins counted across rolling time windows. Funnel-only by default
+ * (excludes bypass) so the windows reflect ad-driven performance, not
+ * organic side-door joiners. The dashboard renders these as live KPIs.
+ */
+export async function getJoinRollingWindows() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      last1h: 0,
+      last6h: 0,
+      last24h: 0,
+      today: 0,
+      last1hAll: 0,
+      last6hAll: 0,
+      last24hAll: 0,
+      todayAll: 0,
+    };
+  }
+
+  const [rows]: any = await db.execute(sql`
+    SELECT
+      COALESCE(SUM(CASE WHEN joinedAt >= NOW() - INTERVAL 1 HOUR  AND attributionStatus <> 'bypass_join' THEN 1 ELSE 0 END), 0) AS last1h,
+      COALESCE(SUM(CASE WHEN joinedAt >= NOW() - INTERVAL 6 HOUR  AND attributionStatus <> 'bypass_join' THEN 1 ELSE 0 END), 0) AS last6h,
+      COALESCE(SUM(CASE WHEN joinedAt >= NOW() - INTERVAL 24 HOUR AND attributionStatus <> 'bypass_join' THEN 1 ELSE 0 END), 0) AS last24h,
+      COALESCE(SUM(CASE WHEN DATE(joinedAt) = CURRENT_DATE()      AND attributionStatus <> 'bypass_join' THEN 1 ELSE 0 END), 0) AS today,
+      COALESCE(SUM(CASE WHEN joinedAt >= NOW() - INTERVAL 1 HOUR  THEN 1 ELSE 0 END), 0) AS last1hAll,
+      COALESCE(SUM(CASE WHEN joinedAt >= NOW() - INTERVAL 6 HOUR  THEN 1 ELSE 0 END), 0) AS last6hAll,
+      COALESCE(SUM(CASE WHEN joinedAt >= NOW() - INTERVAL 24 HOUR THEN 1 ELSE 0 END), 0) AS last24hAll,
+      COALESCE(SUM(CASE WHEN DATE(joinedAt) = CURRENT_DATE()      THEN 1 ELSE 0 END), 0) AS todayAll
+    FROM telegram_joins
+  `);
+
+  const r = rows?.[0] || {};
+  return {
+    last1h: Number(r.last1h || 0),
+    last6h: Number(r.last6h || 0),
+    last24h: Number(r.last24h || 0),
+    today: Number(r.today || 0),
+    last1hAll: Number(r.last1hAll || 0),
+    last6hAll: Number(r.last6hAll || 0),
+    last24hAll: Number(r.last24hAll || 0),
+    todayAll: Number(r.todayAll || 0),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// FUNNEL SNAPSHOT (P6)
+// ═══════════════════════════════════════════════════════════
+
+export type FunnelWindow = "last1h" | "last24h" | "today" | "last7d";
+
+export type FunnelSnapshot = {
+  window: FunnelWindow;
+  pageviews: number;
+  leads: number;
+  botStarts: number;
+  approvedJoins: number;
+  subscribesSent: number;
+};
+
+function funnelWindowSql(window: FunnelWindow) {
+  switch (window) {
+    case "last1h":
+      return sql`>= NOW() - INTERVAL 1 HOUR`;
+    case "last24h":
+      return sql`>= NOW() - INTERVAL 24 HOUR`;
+    case "last7d":
+      return sql`>= NOW() - INTERVAL 7 DAY`;
+    case "today":
+    default:
+      return sql`>= CURRENT_DATE()`;
+  }
+}
+
+export async function getFunnelSnapshot(window: FunnelWindow = "today"): Promise<FunnelSnapshot> {
+  const db = await getDb();
+  if (!db) {
+    return { window, pageviews: 0, leads: 0, botStarts: 0, approvedJoins: 0, subscribesSent: 0 };
+  }
+
+  const w = funnelWindowSql(window);
+
+  // One round-trip with subqueries — each filter uses an indexed timestamp
+  // column so the planner picks index range scans (createdAt / startedAt /
+  // joinedAt / decidedAt are all indexed).
+  const [rows]: any = await db.execute(sql`
+    SELECT
+      (SELECT COUNT(*) FROM tracking_events WHERE eventType = 'pageview' AND createdAt ${w}) AS pageviews,
+      (SELECT COUNT(*) FROM tracking_events WHERE eventType = 'lead' AND createdAt ${w}) AS leads,
+      (SELECT COUNT(*) FROM bot_starts WHERE startedAt ${w}) AS botStarts,
+      (SELECT COUNT(*) FROM telegram_join_request_audit WHERE decision = 'approved' AND decidedAt ${w}) AS approvedJoins,
+      (SELECT COUNT(*) FROM meta_event_logs WHERE eventScope IN ('telegram_start','telegram_join') AND status = 'sent' AND COALESCE(completedAt, createdAt) ${w}) AS subscribesSent
+  `);
+
+  const r = rows?.[0] || {};
+  return {
+    window,
+    pageviews: Number(r.pageviews || 0),
+    leads: Number(r.leads || 0),
+    botStarts: Number(r.botStarts || 0),
+    approvedJoins: Number(r.approvedJoins || 0),
+    subscribesSent: Number(r.subscribesSent || 0),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// META OBSERVABILITY (P4)
+// ═══════════════════════════════════════════════════════════
+
+export type MetaEventStatus = "queued" | "sent" | "failed" | "retrying" | "abandoned";
+
+export async function getMetaEventLogsFiltered(input: {
+  limit?: number;
+  status?: MetaEventStatus | "all";
+  eventType?: string | "all"; // PageView | Lead | Subscribe | all
+  eventScope?: string | "all"; // pageview | lead | telegram_start | telegram_join
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const limit = Math.max(1, Math.min(input.limit ?? 50, 200));
+
+  const filters: any[] = [];
+  if (input.status && input.status !== "all") {
+    filters.push(eq(metaEventLogs.status, input.status));
+  }
+  if (input.eventType && input.eventType !== "all") {
+    filters.push(eq(metaEventLogs.eventType, input.eventType));
+  }
+  if (input.eventScope && input.eventScope !== "all") {
+    filters.push(eq(metaEventLogs.eventScope, input.eventScope));
+  }
+
+  let q = db.select().from(metaEventLogs).$dynamic();
+  if (filters.length) q = q.where(and(...filters));
+  return q.orderBy(desc(metaEventLogs.updatedAt)).limit(limit);
+}
+
+export async function getMetaEventLogByEventId(eventId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(metaEventLogs)
+    .where(eq(metaEventLogs.eventId, eventId))
+    .limit(1);
+  return rows[0];
+}
+
+export async function getMetaErrorBreakdown(windowHours = 24) {
+  const db = await getDb();
+  if (!db) return [];
+  const [rows]: any = await db.execute(sql`
+    SELECT
+      COALESCE(NULLIF(errorCode, ''), 'no_code') AS errorCode,
+      COALESCE(httpStatus, 0) AS httpStatus,
+      COALESCE(NULLIF(errorMessage, ''), '(no message)') AS sampleMessage,
+      COUNT(*) AS occurrences,
+      MAX(updatedAt) AS lastSeenAt
+    FROM meta_event_logs
+    WHERE status IN ('failed', 'retrying', 'abandoned')
+      AND updatedAt >= NOW() - INTERVAL ${sql.raw(String(windowHours))} HOUR
+    GROUP BY errorCode, httpStatus, sampleMessage
+    ORDER BY occurrences DESC, lastSeenAt DESC
+    LIMIT 25
+  `);
+
+  return (rows || []).map((row: any) => ({
+    errorCode: String(row.errorCode || "no_code"),
+    httpStatus: Number(row.httpStatus || 0),
+    sampleMessage: String(row.sampleMessage || ""),
+    occurrences: Number(row.occurrences || 0),
+    lastSeenAt: row.lastSeenAt ? new Date(row.lastSeenAt) : null,
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════
+// REAL-TIME ACTIVITY FEED (P5)
+// ═══════════════════════════════════════════════════════════
+
+export type ActivityFeedEntry = {
+  kind: "join" | "approve" | "decline" | "subscribe" | "bot_start";
+  occurredAt: Date;
+  telegramUserId: string | null;
+  telegramUsername: string | null;
+  telegramFirstName: string | null;
+  channelId: string | null;
+  attributionStatus: string | null;
+  metaStatus: string | null;
+  metaEventId: string | null;
+  reason: string | null;
+};
+
+export async function getActivityFeed(limit = 50): Promise<ActivityFeedEntry[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const cap = Math.max(5, Math.min(limit, 200));
+
+  // We want a unified, time-ordered view across heterogenous tables. UNION ALL
+  // pushes the merge to MySQL so the upstream timestamps stay authoritative,
+  // and each subselect is bounded by `cap` so the worst case is ~5*cap rows
+  // before the outer ORDER BY.
+  const [rows]: any = await db.execute(sql`
+    (
+      SELECT
+        'join' AS kind,
+        tj.joinedAt AS occurredAt,
+        tj.telegramUserId,
+        tj.telegramUsername,
+        tj.telegramFirstName,
+        tj.channelId,
+        tj.attributionStatus,
+        tj.metaEventSent AS metaStatus,
+        tj.metaEventId,
+        NULL AS reason
+      FROM telegram_joins tj
+      ORDER BY tj.joinedAt DESC
+      LIMIT ${cap}
+    )
+    UNION ALL
+    (
+      SELECT
+        CASE WHEN decision = 'approved' THEN 'approve' ELSE 'decline' END AS kind,
+        decidedAt AS occurredAt,
+        telegramUserId,
+        telegramUsername,
+        telegramFirstName,
+        channelId,
+        NULL AS attributionStatus,
+        NULL AS metaStatus,
+        NULL AS metaEventId,
+        reason
+      FROM telegram_join_request_audit
+      ORDER BY decidedAt DESC
+      LIMIT ${cap}
+    )
+    UNION ALL
+    (
+      SELECT
+        'subscribe' AS kind,
+        COALESCE(mel.completedAt, mel.updatedAt, mel.createdAt) AS occurredAt,
+        mel.telegramUserId,
+        bs.telegramUsername,
+        bs.telegramFirstName,
+        NULL AS channelId,
+        bs.attributionStatus,
+        mel.status AS metaStatus,
+        mel.eventId AS metaEventId,
+        NULL AS reason
+      FROM meta_event_logs mel
+      LEFT JOIN bot_starts bs ON bs.telegramUserId = mel.telegramUserId
+      WHERE mel.eventScope IN ('telegram_start', 'telegram_join')
+        AND mel.status = 'sent'
+      ORDER BY COALESCE(mel.completedAt, mel.updatedAt, mel.createdAt) DESC
+      LIMIT ${cap}
+    )
+    UNION ALL
+    (
+      SELECT
+        'bot_start' AS kind,
+        startedAt AS occurredAt,
+        telegramUserId,
+        telegramUsername,
+        telegramFirstName,
+        NULL AS channelId,
+        attributionStatus,
+        metaSubscribeStatus AS metaStatus,
+        metaSubscribeEventId AS metaEventId,
+        NULL AS reason
+      FROM bot_starts
+      ORDER BY startedAt DESC
+      LIMIT ${cap}
+    )
+    ORDER BY occurredAt DESC
+    LIMIT ${cap}
+  `);
+
+  return (rows || []).map((row: any) => ({
+    kind: row.kind as ActivityFeedEntry["kind"],
+    occurredAt: row.occurredAt ? new Date(row.occurredAt) : new Date(0),
+    telegramUserId: row.telegramUserId ?? null,
+    telegramUsername: row.telegramUsername ?? null,
+    telegramFirstName: row.telegramFirstName ?? null,
+    channelId: row.channelId ?? null,
+    attributionStatus: row.attributionStatus ?? null,
+    metaStatus: row.metaStatus ?? null,
+    metaEventId: row.metaEventId ?? null,
+    reason: row.reason ?? null,
+  }));
 }

@@ -58,13 +58,15 @@ type SessionLogRow = {
   createdAt: string | Date;
 };
 
+type MetaEventState = "pending" | "queued" | "sent" | "failed" | "retrying" | "abandoned";
+
 type JoinLogRow = {
   id: number;
   telegramUserId: string;
   telegramUsername: string | null;
   telegramFirstName: string | null;
   channelTitle: string | null;
-  metaEventSent: "pending" | "sent" | "failed";
+  metaEventSent: MetaEventState;
   metaEventId: string | null;
   metaEventSentAt: string | Date | null;
   utmSource: string;
@@ -83,7 +85,7 @@ type SubscribeLogRow = {
   telegramUserId: string;
   telegramUsername: string | null;
   telegramFirstName: string | null;
-  metaSubscribeStatus: "pending" | "sent" | "failed";
+  metaSubscribeStatus: MetaEventState;
   metaSubscribeEventId: string | null;
   metaSubscribeSentAt: string | Date | null;
   startedAt: string | Date;
@@ -155,64 +157,65 @@ function longValue(value: string | null | undefined, fallback = "—") {
   return value && value.trim() ? value : fallback;
 }
 
+function metaStatusTone(status: MetaEventState) {
+  switch (status) {
+    case "sent":
+      return {
+        border: "border-emerald-500/30",
+        background: "bg-emerald-500/10",
+        text: "text-emerald-300",
+        dot: "bg-emerald-400",
+        label: "Sent",
+      } as const;
+    case "failed":
+      return {
+        border: "border-red-500/30",
+        background: "bg-red-500/10",
+        text: "text-red-300",
+        dot: "bg-red-400",
+        label: "Failed",
+      } as const;
+    case "abandoned":
+      return {
+        border: "border-red-700/40",
+        background: "bg-red-900/20",
+        text: "text-red-200",
+        dot: "bg-red-500",
+        label: "Abandoned",
+      } as const;
+    case "retrying":
+      return {
+        border: "border-amber-500/40",
+        background: "bg-amber-500/10",
+        text: "text-amber-200",
+        dot: "bg-amber-400",
+        label: "Retrying",
+      } as const;
+    case "queued":
+      return {
+        border: "border-cyan-500/40",
+        background: "bg-cyan-500/10",
+        text: "text-cyan-200",
+        dot: "bg-cyan-400",
+        label: "Queued",
+      } as const;
+    default:
+      return {
+        border: "border-amber-400/30",
+        background: "bg-amber-400/10",
+        text: "text-amber-200",
+        dot: "bg-amber-300",
+        label: "Pending",
+      } as const;
+  }
+}
+
 function subscribeTone(status: SubscribeLogRow["metaSubscribeStatus"]) {
-  if (status === "sent") {
-    return {
-      border: "border-emerald-500/30",
-      background: "bg-emerald-500/10",
-      text: "text-emerald-300",
-      dot: "bg-emerald-400",
-      label: "Sent",
-    } as const;
-  }
-
-  if (status === "failed") {
-    return {
-      border: "border-red-500/30",
-      background: "bg-red-500/10",
-      text: "text-red-300",
-      dot: "bg-red-400",
-      label: "Failed",
-    } as const;
-  }
-
-  return {
-    border: "border-amber-400/30",
-    background: "bg-amber-400/10",
-    text: "text-amber-200",
-    dot: "bg-amber-300",
-    label: "Pending",
-  } as const;
+  return metaStatusTone(status);
 }
 
 function joinTone(status: JoinLogRow["metaEventSent"]) {
-  if (status === "sent") {
-    return {
-      border: "border-emerald-500/30",
-      background: "bg-emerald-500/10",
-      text: "text-emerald-300",
-      dot: "bg-emerald-400",
-      label: "Sent",
-    } as const;
-  }
-
-  if (status === "failed") {
-    return {
-      border: "border-red-500/30",
-      background: "bg-red-500/10",
-      text: "text-red-300",
-      dot: "bg-red-400",
-      label: "Failed",
-    } as const;
-  }
-
-  return {
-    border: "border-amber-400/30",
-    background: "bg-amber-400/10",
-    text: "text-amber-200",
-    dot: "bg-amber-300",
-    label: "Pending",
-  } as const;
+  return metaStatusTone(status);
 }
 
 function personLabel(row: { telegramUsername: string | null; telegramFirstName: string | null; telegramUserId: string }) {
@@ -343,7 +346,98 @@ export default function MetaDebug() {
     },
   );
 
+  const [metaStatusFilter, setMetaStatusFilter] = useState<
+    "all" | "queued" | "sent" | "failed" | "retrying" | "abandoned"
+  >("all");
+  const [metaEventTypeFilter, setMetaEventTypeFilter] = useState<
+    "all" | "PageView" | "Lead" | "Subscribe"
+  >("all");
+
+  const metaEventsQuery = trpc.dashboard.metaEvents.useQuery(
+    {
+      token,
+      status: metaStatusFilter,
+      eventType: metaEventTypeFilter,
+      limit: 50,
+    },
+    {
+      enabled: Boolean(token),
+      retry: false,
+      refetchInterval: 10_000,
+      refetchOnWindowFocus: true,
+    },
+  );
+  const retryMetaEventMutation = trpc.dashboard.retryMetaEvent.useMutation();
+
   const rawData = metaDebugQuery.data as MetaDebugLogData | { error: string } | undefined;
+  const rawMetaEvents = metaEventsQuery.data as
+    | {
+        rows: Array<{
+          id: number;
+          eventId: string;
+          eventType: string;
+          eventScope: string;
+          status: MetaEventState;
+          httpStatus: number | null;
+          errorCode: string | null;
+          errorMessage: string | null;
+          attemptCount: number;
+          retryable: number;
+          telegramUserId: string | null;
+          createdAt: string | Date;
+          updatedAt: string | Date;
+          completedAt: string | Date | null;
+          nextRetryAt: string | Date | null;
+        }>;
+        breakdown: Array<{
+          errorCode: string;
+          httpStatus: number;
+          sampleMessage: string;
+          occurrences: number;
+          lastSeenAt: string | Date | null;
+        }>;
+        summary: {
+          totalStarts: number;
+          totalSent: number;
+          totalFailed: number;
+          totalPending: number;
+          todayStarts: number;
+          todaySent: number;
+          todayFailed: number;
+          todayPending: number;
+        };
+      }
+    | { error: string }
+    | undefined;
+  const metaEvents =
+    rawMetaEvents && !("error" in rawMetaEvents) ? rawMetaEvents : null;
+
+  const handleRetryEvent = async (eventId: string) => {
+    try {
+      const result = await retryMetaEventMutation.mutateAsync({ token, eventId });
+      if ("error" in result) {
+        toast.error("Retry failed", { description: result.error });
+        return;
+      }
+      if (!result.success && "error" in result) {
+        toast.error("Retry failed", { description: (result as { error?: string }).error });
+        return;
+      }
+      const status = (result as { status?: string }).status;
+      if (status === "sent") {
+        toast.success(`Retried ${eventId.slice(0, 24)}…`, { description: "Meta accepted the event." });
+      } else {
+        toast.warning(`Status: ${status || "unknown"}`, {
+          description: (result as { errorMessage?: string }).errorMessage || "See dashboard for details.",
+        });
+      }
+      void metaEventsQuery.refetch();
+    } catch (error) {
+      toast.error("Retry threw", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
 
   useEffect(() => {
     refreshBrowserSnapshot();
@@ -443,6 +537,185 @@ export default function MetaDebug() {
             </div>
           </div>
         </header>
+
+        {/* === P4: Meta event explorer (filters + retry-one + error breakdown) === */}
+        <Card className="mt-4 border-amber-500/30 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.10),transparent_38%),#111827]">
+          <div className="flex items-center gap-2 text-amber-300">
+            <Activity className="h-4 w-4" />
+            <h2 className="text-lg font-semibold tracking-[-0.03em]">Meta event explorer</h2>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-slate-400">
+            Filter <code className="rounded bg-slate-900 px-1 text-xs">meta_event_logs</code> by status / type, retry a single event in one click, and see the top error causes from the last 24 h.
+          </p>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/75 px-3 py-2">
+              <p className="text-[0.65rem] uppercase tracking-[0.16em] text-slate-500">Sent today</p>
+              <p className="mt-1 text-xl font-bold text-emerald-300">{(metaEvents?.summary.todaySent ?? 0).toLocaleString("fr-FR")}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/75 px-3 py-2">
+              <p className="text-[0.65rem] uppercase tracking-[0.16em] text-slate-500">Failed today</p>
+              <p className="mt-1 text-xl font-bold text-red-300">{(metaEvents?.summary.todayFailed ?? 0).toLocaleString("fr-FR")}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/75 px-3 py-2">
+              <p className="text-[0.65rem] uppercase tracking-[0.16em] text-slate-500">Pending / retrying</p>
+              <p className="mt-1 text-xl font-bold text-amber-200">{(metaEvents?.summary.totalPending ?? 0).toLocaleString("fr-FR")}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/75 px-3 py-2">
+              <p className="text-[0.65rem] uppercase tracking-[0.16em] text-slate-500">Total starts logged</p>
+              <p className="mt-1 text-xl font-bold text-slate-200">{(metaEvents?.summary.totalStarts ?? 0).toLocaleString("fr-FR")}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-slate-400">
+              <span>Status</span>
+              <select
+                value={metaStatusFilter}
+                onChange={(e) =>
+                  setMetaStatusFilter(e.target.value as typeof metaStatusFilter)
+                }
+                className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-200"
+              >
+                <option value="all">All</option>
+                <option value="sent">sent</option>
+                <option value="failed">failed</option>
+                <option value="retrying">retrying</option>
+                <option value="abandoned">abandoned</option>
+                <option value="queued">queued</option>
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2 text-xs text-slate-400">
+              <span>Type</span>
+              <select
+                value={metaEventTypeFilter}
+                onChange={(e) =>
+                  setMetaEventTypeFilter(e.target.value as typeof metaEventTypeFilter)
+                }
+                className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-200"
+              >
+                <option value="all">All</option>
+                <option value="PageView">PageView</option>
+                <option value="Lead">Lead</option>
+                <option value="Subscribe">Subscribe</option>
+              </select>
+            </label>
+
+            <button
+              type="button"
+              onClick={() => void metaEventsQuery.refetch()}
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 text-xs text-slate-300 hover:border-slate-500"
+            >
+              <RefreshCcw className={`h-3.5 w-3.5 ${metaEventsQuery.isFetching ? "animate-spin" : ""}`} /> Refresh
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+            <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+              {metaEventsQuery.isLoading ? (
+                <p className="text-sm text-slate-400">Loading…</p>
+              ) : !metaEvents || metaEvents.rows.length === 0 ? (
+                <p className="text-sm text-slate-400">No matching meta events.</p>
+              ) : (
+                metaEvents.rows.map((row) => {
+                  const tone = metaStatusTone(row.status);
+                  return (
+                    <div
+                      key={row.id}
+                      className="rounded-[14px] border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs text-slate-300"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-mono text-[11px] text-slate-200">
+                            {row.eventType} · {row.eventScope} · #{row.id}
+                          </p>
+                          <p className="truncate text-[10px] text-slate-500">{row.eventId}</p>
+                        </div>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${tone.border} ${tone.background} ${tone.text}`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} /> {tone.label}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 sm:grid-cols-4">
+                        <p>
+                          <span className="text-slate-500">HTTP:</span>{" "}
+                          {row.httpStatus ?? "—"}
+                        </p>
+                        <p>
+                          <span className="text-slate-500">Attempts:</span>{" "}
+                          {row.attemptCount}
+                        </p>
+                        <p>
+                          <span className="text-slate-500">Updated:</span>{" "}
+                          {formatDateTime(row.updatedAt)}
+                        </p>
+                        <p>
+                          <span className="text-slate-500">Next retry:</span>{" "}
+                          {formatDateTime(row.nextRetryAt)}
+                        </p>
+                      </div>
+                      {row.errorMessage ? (
+                        <p className="mt-1 text-[11px] text-red-300">
+                          {row.errorCode ? `[${row.errorCode}] ` : ""}
+                          {row.errorMessage.slice(0, 240)}
+                        </p>
+                      ) : null}
+                      {(row.status === "failed" ||
+                        row.status === "retrying" ||
+                        row.status === "abandoned") && row.retryable ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleRetryEvent(row.eventId)}
+                          disabled={retryMetaEventMutation.isPending}
+                          className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 text-[11px] font-medium text-amber-200 hover:border-amber-300 disabled:opacity-60"
+                        >
+                          <RefreshCcw className="h-3 w-3" /> Retry now
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200">
+                Top errors · last 24 h
+              </h3>
+              <div className="mt-2 space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                {!metaEvents || metaEvents.breakdown.length === 0 ? (
+                  <p className="text-xs text-slate-400">
+                    No errors in the last 24 h. 🎉
+                  </p>
+                ) : (
+                  metaEvents.breakdown.map((row, i) => (
+                    <div
+                      key={`${row.errorCode}-${row.httpStatus}-${i}`}
+                      className="rounded-[12px] border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-[11px] text-slate-200">
+                          [{row.errorCode || "no_code"}] HTTP {row.httpStatus || "—"}
+                        </span>
+                        <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[11px] text-amber-200">
+                          ×{row.occurrences}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-400 line-clamp-3">
+                        {row.sampleMessage}
+                      </p>
+                      <p className="mt-1 text-[10px] text-slate-600">
+                        last seen {formatDateTime(row.lastSeenAt)}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </Card>
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[1.05fr_1fr]">
           <Card className="border-emerald-500/30 bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.13),transparent_38%),#111827]">

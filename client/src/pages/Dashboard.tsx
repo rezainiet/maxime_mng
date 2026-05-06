@@ -12,8 +12,10 @@ import {
 } from "recharts";
 import {
   Activity,
+  AlertTriangle,
   ArrowLeft,
   CalendarDays,
+  CheckCircle2,
   ChevronDown,
   ChevronsDown,
   Clock3,
@@ -30,6 +32,8 @@ import {
   TrendingUp,
   UserPlus,
   Users,
+  XCircle,
+  Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -138,24 +142,94 @@ type MetaStatusData = {
   };
 };
 
+type CampaignBreakdownRow = {
+  campaign: string;
+  joinsCount?: number;
+  startsCount?: number;
+  metaSentCount?: number;
+  joinedCount?: number;
+  attributedCount: number;
+};
+
 type TelegramOverviewData = {
   joinStats: {
     totalJoins: number;
+    funnelJoins?: number;
     todayJoins: number;
     totalMetaCount: number;
     todayMetaJoins: number;
+    attributedJoins?: number;
+    unattributedJoins?: number;
+    bypassJoins?: number;
     conversionRate: string;
   };
+  joinsByCampaign?: CampaignBreakdownRow[];
   botStartStats: {
     botStartsCount: number;
     joinedAfterStartCount: number;
     notJoinedCount: number;
+    attributedStarts?: number;
+    organicStarts?: number;
   };
+  botStartsByCampaign?: CampaignBreakdownRow[];
   joins: TelegramJoinRow[];
   dailyReport: {
     conversionRate: string;
   };
   weeklyJoins: number;
+  rollingJoins?: {
+    last1h: number;
+    last6h: number;
+    last24h: number;
+    today: number;
+    last1hAll: number;
+    last6hAll: number;
+    last24hAll: number;
+    todayAll: number;
+  };
+  decisionStats?: {
+    totalApproved: number;
+    totalDeclined: number;
+    todayApproved: number;
+    todayDeclined: number;
+    last1hApproved: number;
+    last1hDeclined: number;
+    last24hApproved: number;
+    last24hDeclined: number;
+    bypassAttemptsTotal: number;
+    bypassAttemptsToday: number;
+  };
+};
+
+type ActivityFeedEntry = {
+  kind: "join" | "approve" | "decline" | "subscribe" | "bot_start";
+  occurredAt: string | Date;
+  telegramUserId: string | null;
+  telegramUsername: string | null;
+  telegramFirstName: string | null;
+  channelId: string | null;
+  attributionStatus: string | null;
+  metaStatus: string | null;
+  metaEventId: string | null;
+  reason: string | null;
+};
+
+type ActivityFeedData = { entries: ActivityFeedEntry[] };
+
+type FunnelSnapshotRow = {
+  window: "last1h" | "last24h" | "today" | "last7d";
+  pageviews: number;
+  leads: number;
+  botStarts: number;
+  approvedJoins: number;
+  subscribesSent: number;
+};
+
+type FunnelSnapshotData = {
+  selected: FunnelSnapshotRow;
+  last1h: FunnelSnapshotRow;
+  last24h: FunnelSnapshotRow;
+  last7d: FunnelSnapshotRow;
 };
 
 type TelegramJoinRow = {
@@ -683,6 +757,183 @@ function MetricCard({
   );
 }
 
+function FunnelPyramidCard({ snapshot }: { snapshot: FunnelSnapshotData }) {
+  // Today's snapshot is the headline; we render last1h/24h/7d as sub-rows so
+  // operators can spot stage-by-stage drop-offs without changing the period
+  // selector. Rates are computed against the previous stage for stage-by-
+  // stage conversion, falling back to "—" when the upstream stage is zero
+  // (avoids printing misleading "100%" or "0.0%" for empty windows).
+  const todayRow = snapshot.selected;
+  const stages: Array<{ key: keyof FunnelSnapshotRow; label: string; tone: string }> = [
+    { key: "pageviews", label: "PageView", tone: "from-violet-300 to-fuchsia-400" },
+    { key: "leads", label: "Lead", tone: "from-cyan-300 to-sky-400" },
+    { key: "botStarts", label: "Bot Start", tone: "from-emerald-300 to-teal-400" },
+    { key: "approvedJoins", label: "Approved Join", tone: "from-amber-300 to-orange-400" },
+    { key: "subscribesSent", label: "Subscribe sent", tone: "from-pink-300 to-rose-400" },
+  ];
+  const head = Number(todayRow?.pageviews || 0);
+  const conv = (n: number, prev: number) => (prev > 0 ? `${((n / prev) * 100).toFixed(1)}%` : "—");
+  const widthOf = (n: number) =>
+    head > 0 ? `${Math.max(8, Math.round((n / head) * 100))}%` : "8%";
+
+  const windows: Array<{ label: string; row: FunnelSnapshotRow }> = [
+    { label: "1 h", row: snapshot.last1h },
+    { label: "24 h", row: snapshot.last24h },
+    { label: "7 j", row: snapshot.last7d },
+  ];
+
+  return (
+    <Card className="lg:col-span-12 border-violet-500/30 bg-[radial-gradient(circle_at_top_left,rgba(168,85,247,0.10),transparent_42%),#111827]">
+      <div className="flex items-center gap-2 text-amber-300">
+        <TrendingUp className="h-4 w-4 text-violet-400" />
+        <h3 className="text-lg font-semibold tracking-[-0.03em]">Funnel — today</h3>
+      </div>
+      <p className="mt-2 text-sm leading-6 text-slate-400">
+        PageView → Lead → Bot Start → Approved Join → Subscribe sent. Conversion
+        % rapporté à l&rsquo;étape précédente.
+      </p>
+
+      <div className="mt-4 space-y-2">
+        {stages.map((stage, idx) => {
+          const value = Number(todayRow?.[stage.key] || 0);
+          const prev = idx === 0 ? value : Number(todayRow?.[stages[idx - 1].key] || 0);
+          return (
+            <div key={stage.key} className="relative">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium text-slate-200">{stage.label}</span>
+                <span className="font-mono text-slate-300">
+                  {formatInt(value)}{" "}
+                  <span className="text-slate-500">({conv(value, prev)})</span>
+                </span>
+              </div>
+              <div
+                className={`mt-1 h-3 rounded-full bg-gradient-to-r ${stage.tone} transition-all`}
+                style={{ width: widthOf(value) }}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 text-xs sm:grid-cols-3">
+        {windows.map(({ label, row }) => (
+          <div key={label} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+            <p className="text-[0.7rem] font-medium uppercase tracking-[0.18em] text-slate-400">
+              Dernières {label}
+            </p>
+            <div className="mt-2 grid grid-cols-5 gap-1 text-center">
+              <span className="rounded bg-slate-900 py-1 text-violet-300">
+                {formatInt(row?.pageviews ?? 0)}
+              </span>
+              <span className="rounded bg-slate-900 py-1 text-cyan-300">
+                {formatInt(row?.leads ?? 0)}
+              </span>
+              <span className="rounded bg-slate-900 py-1 text-emerald-300">
+                {formatInt(row?.botStarts ?? 0)}
+              </span>
+              <span className="rounded bg-slate-900 py-1 text-amber-300">
+                {formatInt(row?.approvedJoins ?? 0)}
+              </span>
+              <span className="rounded bg-slate-900 py-1 text-pink-300">
+                {formatInt(row?.subscribesSent ?? 0)}
+              </span>
+            </div>
+            <p className="mt-2 grid grid-cols-5 gap-1 text-center text-[0.6rem] uppercase tracking-[0.12em] text-slate-500">
+              <span>PV</span>
+              <span>Lead</span>
+              <span>Start</span>
+              <span>Appr</span>
+              <span>Sub</span>
+            </p>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function activityKindStyles(kind: ActivityFeedEntry["kind"]) {
+  switch (kind) {
+    case "approve":
+      return { dot: "bg-emerald-400", label: "Approuvé", icon: CheckCircle2, text: "text-emerald-300" };
+    case "decline":
+      return { dot: "bg-red-400", label: "Refusé (bypass)", icon: XCircle, text: "text-red-300" };
+    case "join":
+      return { dot: "bg-cyan-400", label: "Joined", icon: UserPlus, text: "text-cyan-300" };
+    case "subscribe":
+      return { dot: "bg-violet-400", label: "Subscribe envoyé", icon: Zap, text: "text-violet-300" };
+    case "bot_start":
+    default:
+      return { dot: "bg-amber-300", label: "Bot start", icon: Power, text: "text-amber-200" };
+  }
+}
+
+function ActivityFeedCard({
+  entries,
+  isLoading,
+}: {
+  entries: ActivityFeedEntry[];
+  isLoading: boolean;
+}) {
+  return (
+    <Card className="lg:col-span-12 border-amber-500/30">
+      <div className="flex items-center gap-2 text-amber-300">
+        <Activity className="h-4 w-4 text-amber-300" />
+        <h3 className="text-lg font-semibold tracking-[-0.03em]">Activité live (joins · approvals · subscribes)</h3>
+      </div>
+      <p className="mt-2 text-sm leading-6 text-slate-400">
+        Flux unifié des derniers événements funnel — ordre chronologique, mis à jour toutes les 10 s.
+      </p>
+
+      <div className="mt-4 space-y-2 max-h-[420px] overflow-y-auto pr-1">
+        {isLoading ? (
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/80 px-4 py-2 text-sm text-slate-300">
+            <Loader2 className="h-4 w-4 animate-spin" /> Chargement…
+          </div>
+        ) : entries.length === 0 ? (
+          <p className="text-sm text-slate-400">Aucune activité récente.</p>
+        ) : (
+          entries.map((entry, i) => {
+            const style = activityKindStyles(entry.kind);
+            const Icon = style.icon;
+            const name =
+              entry.telegramFirstName ||
+              entry.telegramUsername ||
+              (entry.telegramUserId ? `tg:${entry.telegramUserId}` : "anonyme");
+            return (
+              <div
+                key={`${entry.kind}-${entry.telegramUserId ?? "x"}-${entry.occurredAt}-${i}`}
+                className="flex items-center justify-between gap-3 rounded-[14px] border border-slate-800 bg-slate-950/70 px-3 py-2 text-sm"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${style.dot}`} />
+                  <Icon className={`h-4 w-4 shrink-0 ${style.text}`} />
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-white">
+                      {style.label}
+                      <span className="ml-2 text-slate-400">{name}</span>
+                    </p>
+                    <p className="truncate text-xs text-slate-500">
+                      {entry.attributionStatus ? `attr: ${entry.attributionStatus}` : null}
+                      {entry.attributionStatus && entry.metaStatus ? " · " : null}
+                      {entry.metaStatus ? `meta: ${entry.metaStatus}` : null}
+                      {entry.reason ? ` · ${entry.reason}` : null}
+                    </p>
+                  </div>
+                </div>
+                <div className="shrink-0 text-right text-xs text-slate-400">
+                  <p>{formatRelativeTime(entry.occurredAt)}</p>
+                  <p className="mt-0.5">{formatDateTime(entry.occurredAt)}</p>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const [password, setPassword] = useState("");
   const [token, setToken] = useState<string>(() => {
@@ -745,6 +996,24 @@ export default function Dashboard() {
       refetchOnWindowFocus: true,
     },
   );
+  const activityFeedQuery = trpc.dashboard.activityFeed.useQuery(
+    { token, limit: 50 },
+    {
+      enabled: Boolean(token),
+      retry: false,
+      refetchInterval: 10_000,
+      refetchOnWindowFocus: true,
+    },
+  );
+  const funnelSnapshotQuery = trpc.dashboard.funnelSnapshot.useQuery(
+    { token, window: "today" },
+    {
+      enabled: Boolean(token),
+      retry: false,
+      refetchInterval: 30_000,
+      refetchOnWindowFocus: true,
+    },
+  );
   const updateSettingMutation = trpc.dashboard.updateSetting.useMutation();
 
   useEffect(() => {
@@ -757,6 +1026,8 @@ export default function Dashboard() {
   const rawMetaStatus = metaStatusQuery.data as MetaStatusData | { error: string } | undefined;
   const rawSubscriberLog = subscriberLogQuery.data as SubscriberLogData | { error: string } | undefined;
   const rawTelegramOverview = telegramOverviewQuery.data as TelegramOverviewData | { error: string } | undefined;
+  const rawActivityFeed = activityFeedQuery.data as ActivityFeedData | { error: string } | undefined;
+  const rawFunnelSnapshot = funnelSnapshotQuery.data as FunnelSnapshotData | { error: string } | undefined;
 
   useEffect(() => {
     const statsUnauthorized = rawData && "error" in rawData && rawData.error === "Unauthorized";
@@ -792,6 +1063,8 @@ export default function Dashboard() {
   const metaStatus = rawMetaStatus && !("error" in rawMetaStatus) ? rawMetaStatus : null;
   const subscriberLog = rawSubscriberLog && !("error" in rawSubscriberLog) ? rawSubscriberLog.rows : [];
   const telegramOverview = rawTelegramOverview && !("error" in rawTelegramOverview) ? rawTelegramOverview : null;
+  const activityFeed = rawActivityFeed && !("error" in rawActivityFeed) ? rawActivityFeed.entries : [];
+  const funnelSnapshot = rawFunnelSnapshot && !("error" in rawFunnelSnapshot) ? rawFunnelSnapshot : null;
 
   const recentJoinedMembers = subscriberLog.filter((row) => Boolean(row.joinedAt)).slice(0, 5);
 
@@ -801,6 +1074,17 @@ export default function Dashboard() {
   const membersJoined = telegramOverview?.botStartStats.joinedAfterStartCount || 0;
   const pendingAfterStart = telegramOverview?.botStartStats.notJoinedCount || 0;
   const botToMemberRate = botStarts > 0 ? `${((membersJoined / botStarts) * 100).toFixed(1)}%` : "0.0%";
+
+  // Join-table-derived breakdown (telegram_joins). Distinct from
+  // botStartStats.joinedAfterStartCount, which counts bot_starts.joinedAt and
+  // therefore excludes bypass joins by definition.
+  const totalJoins = telegramOverview?.joinStats.totalJoins ?? 0;
+  const funnelJoins = telegramOverview?.joinStats.funnelJoins ?? Math.max(totalJoins - (telegramOverview?.joinStats.bypassJoins ?? 0), 0);
+  const attributedJoins = telegramOverview?.joinStats.attributedJoins ?? 0;
+  const unattributedJoins = telegramOverview?.joinStats.unattributedJoins ?? 0;
+  const bypassJoins = telegramOverview?.joinStats.bypassJoins ?? 0;
+  const rolling = telegramOverview?.rollingJoins;
+  const decisions = telegramOverview?.decisionStats;
 
   useEffect(() => {
     const currentTelegramGroupUrl = settings.find((entry) => entry.settingKey === "telegram_group_url")?.settingValue;
@@ -1284,9 +1568,9 @@ export default function Dashboard() {
                 icon={Power}
               />
               <MetricCard
-                title="Membres rejoints"
+                title="Starts → joined"
                 value={formatInt(membersJoined)}
-                subtitle="Bot start puis ajout confirmé"
+                subtitle="Bot starts dont l’ajout au canal est confirmé (≠ total joins)"
                 color="green"
                 icon={UserPlus}
               />
@@ -1336,6 +1620,157 @@ export default function Dashboard() {
                 icon={ChevronsDown}
               />
             </div>
+
+            {/* === P1 + P2: Join breakdown + rolling windows === */}
+            <Card className="lg:col-span-12 border-emerald-500/35">
+              <div className="flex items-center gap-2 text-amber-300">
+                <UserPlus className="h-4 w-4 text-emerald-400" />
+                <h3 className="text-lg font-semibold tracking-[-0.03em]">
+                  Joins du canal — vue complète
+                </h3>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Lecture directe de <code className="rounded bg-slate-900 px-1 text-xs">telegram_joins</code>.
+                Inclut tous les types d&rsquo;arrivée (funnel + bypass) et les fenêtres glissantes.
+              </p>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <MetricCard
+                  title="Total joins"
+                  value={formatInt(totalJoins)}
+                  subtitle="Toutes attributions confondues"
+                  color="green"
+                  icon={UserPlus}
+                />
+                <MetricCard
+                  title="Funnel joins"
+                  value={formatInt(funnelJoins)}
+                  subtitle="Hors bypass — performance ad"
+                  color="cyan"
+                  icon={TrendingUp}
+                />
+                <MetricCard
+                  title="Attribués"
+                  value={formatInt(attributedJoins)}
+                  subtitle="Session UTM résolue"
+                  color="violet"
+                  icon={Zap}
+                />
+                <MetricCard
+                  title="Sans attribution"
+                  value={formatInt(unattributedJoins)}
+                  subtitle="Bot start sans session UTM"
+                  color="yellow"
+                  icon={AlertTriangle}
+                />
+                <MetricCard
+                  title="Bypass joins"
+                  value={formatInt(bypassJoins)}
+                  subtitle="Aucun bot_starts — side-door"
+                  color="yellow"
+                  icon={ShieldCheck}
+                />
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <MetricCard
+                  title="Joins · 1h"
+                  value={formatInt(rolling?.last1h ?? 0)}
+                  subtitle={`${formatInt(rolling?.last1hAll ?? 0)} avec bypass`}
+                  color="green"
+                  icon={Clock3}
+                />
+                <MetricCard
+                  title="Joins · 6h"
+                  value={formatInt(rolling?.last6h ?? 0)}
+                  subtitle={`${formatInt(rolling?.last6hAll ?? 0)} avec bypass`}
+                  color="green"
+                  icon={Clock3}
+                />
+                <MetricCard
+                  title="Joins · 24h"
+                  value={formatInt(rolling?.last24h ?? 0)}
+                  subtitle={`${formatInt(rolling?.last24hAll ?? 0)} avec bypass`}
+                  color="green"
+                  icon={Clock3}
+                />
+                <MetricCard
+                  title="Joins · today"
+                  value={formatInt(rolling?.today ?? 0)}
+                  subtitle={`${formatInt(rolling?.todayAll ?? 0)} avec bypass`}
+                  color="green"
+                  icon={CalendarDays}
+                />
+              </div>
+            </Card>
+
+            {/* === P3: Join request audit === */}
+            <Card className="lg:col-span-12 border-cyan-500/30">
+              <div className="flex items-center gap-2 text-amber-300">
+                <ShieldCheck className="h-4 w-4 text-cyan-400" />
+                <h3 className="text-lg font-semibold tracking-[-0.03em]">
+                  Approuvés / Refusés — chat_join_request
+                </h3>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Décisions persistées dans <code className="rounded bg-slate-900 px-1 text-xs">telegram_join_request_audit</code>.
+                Les refus sont des tentatives de bypass (pas de bot_starts).
+              </p>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                <MetricCard
+                  title="Approuvés today"
+                  value={formatInt(decisions?.todayApproved ?? 0)}
+                  subtitle={`${formatInt(decisions?.totalApproved ?? 0)} total`}
+                  color="green"
+                  icon={CheckCircle2}
+                />
+                <MetricCard
+                  title="Refusés today"
+                  value={formatInt(decisions?.todayDeclined ?? 0)}
+                  subtitle={`${formatInt(decisions?.totalDeclined ?? 0)} total`}
+                  color="yellow"
+                  icon={XCircle}
+                />
+                <MetricCard
+                  title="Bypass attempts today"
+                  value={formatInt(decisions?.bypassAttemptsToday ?? 0)}
+                  subtitle={`${formatInt(decisions?.bypassAttemptsTotal ?? 0)} total`}
+                  color="yellow"
+                  icon={AlertTriangle}
+                />
+                <MetricCard
+                  title="Approuvés · 1h"
+                  value={formatInt(decisions?.last1hApproved ?? 0)}
+                  subtitle="Fenêtre glissante"
+                  color="cyan"
+                  icon={Clock3}
+                />
+                <MetricCard
+                  title="Refusés · 1h"
+                  value={formatInt(decisions?.last1hDeclined ?? 0)}
+                  subtitle="Fenêtre glissante"
+                  color="cyan"
+                  icon={Clock3}
+                />
+                <MetricCard
+                  title="Approuvés · 24h"
+                  value={formatInt(decisions?.last24hApproved ?? 0)}
+                  subtitle={`${formatInt(decisions?.last24hDeclined ?? 0)} refusés`}
+                  color="violet"
+                  icon={Clock3}
+                />
+              </div>
+            </Card>
+
+            {/* === P6: Funnel pyramid === */}
+            {funnelSnapshot ? <FunnelPyramidCard snapshot={funnelSnapshot} /> : null}
+
+            {/* === P5: Real-time activity feed === */}
+            <ActivityFeedCard
+              entries={activityFeed}
+              isLoading={activityFeedQuery.isLoading}
+            />
 
             <Card className="lg:col-span-8">
               <div className="flex items-center gap-2 text-amber-300">

@@ -14,6 +14,7 @@ import {
   hasSentSubscribeForTelegramUser,
   insertTelegramJoin,
   markBotStartJoined,
+  recordJoinRequestDecision,
   resolveTelegramLinkage,
   setBotStartPersonalInviteLink,
   tryRecordTelegramUpdateId,
@@ -793,6 +794,9 @@ export function setupTelegramWebhook(app: Express) {
   async function handleChatJoinRequest(req: TelegramChatJoinRequest) {
     const telegramUserId = String(req.from.id);
     const channelId = String(req.chat.id);
+    const username = req.from.username || null;
+    const firstName = req.from.first_name || null;
+    const inviteLinkName = req.invite_link?.name || null;
 
     const botStart = await getBotStartByTelegramUserId(telegramUserId);
     if (botStart) {
@@ -800,12 +804,26 @@ export function setupTelegramWebhook(app: Express) {
         chatId: channelId,
         telegramUserId,
       });
+      // Persist BEFORE we trust the log to be the source of truth — the audit
+      // row is what the dashboard counts. We tolerate a Telegram API failure
+      // (still record an `approved` decision with an api_error reason) so the
+      // dashboard doesn't undercount when Telegram blips.
+      await recordJoinRequestDecision({
+        telegramUserId,
+        telegramUsername: username,
+        telegramFirstName: firstName,
+        channelId,
+        decision: "approved",
+        reason: result.ok ? null : `api_error:${result.error}`.slice(0, 128),
+        hadBotStart: 1,
+        inviteLinkName,
+      });
       if (result.ok) {
         log.info("telegramWebhook", "join_request_approved", {
           telegramUserId,
           channelId,
-          username: req.from.username || null,
-          inviteLinkName: req.invite_link?.name || null,
+          username,
+          inviteLinkName,
           attribution: botStart.attributionStatus,
         });
       } else {
@@ -822,11 +840,21 @@ export function setupTelegramWebhook(app: Express) {
       chatId: channelId,
       telegramUserId,
     });
+    await recordJoinRequestDecision({
+      telegramUserId,
+      telegramUsername: username,
+      telegramFirstName: firstName,
+      channelId,
+      decision: "declined",
+      reason: "no_bot_start",
+      hadBotStart: 0,
+      inviteLinkName,
+    });
     log.warn("telegramWebhook", "join_request_declined_no_bot_start", {
       telegramUserId,
       channelId,
-      username: req.from.username || null,
-      inviteLinkName: req.invite_link?.name || null,
+      username,
+      inviteLinkName,
       declineOk: result.ok,
       declineError: result.ok ? null : result.error,
     });

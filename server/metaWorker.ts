@@ -15,7 +15,13 @@ const WORKER_INTERVAL_MS = 30_000;
 // coverage — enough to ride out any realistic Meta outage without losing
 // events. Below ~5 attempts the curve grows quickly (5m → 80m), then flatlines
 // at the 6h cap so the remaining 11 attempts add ~66h of buffer.
-const MAX_ATTEMPTS = 15;
+// Exported so the manual "Process retries" button in the dashboard ages
+// events out at the same threshold as the worker — previously the manual
+// path abandoned at 5 while the worker still had 10 attempts left in
+// the budget, so a single click could permanently mark recoverable events
+// as abandoned.
+export const META_MAX_ATTEMPTS = 15;
+const MAX_ATTEMPTS = META_MAX_ATTEMPTS;
 const BASE_BACKOFF_MS = 5 * 60 * 1000;
 const MAX_BACKOFF_MS = 6 * 60 * 60 * 1000;
 

@@ -304,6 +304,30 @@ export const broadcastDeliveries = mysqlTable("broadcast_deliveries", {
 export type BroadcastDelivery = typeof broadcastDeliveries.$inferSelect;
 export type InsertBroadcastDelivery = typeof broadcastDeliveries.$inferInsert;
 
+/**
+ * Audit trail of every chat_join_request decision the bot makes.
+ *
+ * The webhook auto-approves when the user has a bot_starts row and declines
+ * otherwise. Without this row each decision was log-only — declines (i.e.
+ * bypass attempts) had no DB footprint at all, so the dashboard could not
+ * answer "how many people tried to side-door the channel today".
+ */
+export const telegramJoinRequestAudit = mysqlTable("telegram_join_request_audit", {
+  id: int("id").autoincrement().primaryKey(),
+  telegramUserId: varchar("telegramUserId", { length: 64 }).notNull(),
+  telegramUsername: varchar("telegramUsername", { length: 128 }),
+  telegramFirstName: varchar("telegramFirstName", { length: 128 }),
+  channelId: varchar("channelId", { length: 64 }).notNull(),
+  decision: mysqlEnum("decision", ["approved", "declined"]).notNull(),
+  reason: varchar("reason", { length: 128 }),
+  hadBotStart: int("hadBotStart").default(0).notNull(),
+  inviteLinkName: varchar("inviteLinkName", { length: 128 }),
+  decidedAt: timestamp("decidedAt").defaultNow().notNull(),
+});
+
+export type TelegramJoinRequestAudit = typeof telegramJoinRequestAudit.$inferSelect;
+export type InsertTelegramJoinRequestAudit = typeof telegramJoinRequestAudit.$inferInsert;
+
 export const siteSettings = mysqlTable("site_settings", {
   id: int("id").autoincrement().primaryKey(),
   settingKey: varchar("setting_key", { length: 100 }).notNull().unique(),

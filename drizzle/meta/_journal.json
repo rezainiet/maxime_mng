@@ -92,6 +92,13 @@
       "when": 1798500000000,
       "tag": "0012_personal_invite_link",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1798600000000,
+      "tag": "0013_join_request_audit",
+      "breakpoints": true
     }
   ]
 }
