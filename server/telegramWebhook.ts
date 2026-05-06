@@ -861,6 +861,24 @@ export function setupTelegramWebhook(app: Express) {
   }
 
   app.post("/api/telegram/setup-webhook", async (req: Request, res: Response) => {
+    // Header-secret auth. Without this, anyone could repoint our Telegram
+    // webhook to a hostile URL (Telegram only enforces TLS, not ownership).
+    const expected = process.env.WEBHOOK_ADMIN_SECRET;
+    if (!expected) {
+      res.status(503).json({ error: "WEBHOOK_ADMIN_SECRET not configured" });
+      return;
+    }
+    const provided = req.header("x-webhook-admin-secret") || "";
+    const expectedBuf = Buffer.from(expected);
+    const providedBuf = Buffer.from(provided);
+    const ok =
+      expectedBuf.length === providedBuf.length &&
+      crypto.timingSafeEqual(expectedBuf, providedBuf);
+    if (!ok) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
     const { webhookUrl } = req.body as { webhookUrl?: string };
     if (!webhookUrl) {
       res.status(400).json({ error: "webhookUrl is required" });

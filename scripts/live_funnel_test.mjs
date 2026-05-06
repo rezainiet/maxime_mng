@@ -7,7 +7,14 @@
 //
 // Use a fake telegramUserId to keep real-user data clean.
 
-const BASE = process.env.LIVE_FUNNEL_BASE_URL || "https://mister-b-tel-production.up.railway.app";
+const BASE = process.env.LIVE_FUNNEL_BASE_URL;
+if (!BASE) {
+  console.error(
+    "LIVE_FUNNEL_BASE_URL env var is required (e.g. https://maximemng-production.up.railway.app). " +
+      "No default — set this explicitly so the script cannot silently target the wrong service.",
+  );
+  process.exit(1);
+}
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 if (!WEBHOOK_SECRET) {
   console.error(
