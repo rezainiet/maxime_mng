@@ -36,10 +36,13 @@
     </script>
     <!-- Meta Pixel Code -->
     <script>
-      // Pixel ID is injected by Vite from VITE_META_PIXEL_ID; we keep the
-      // browser- and server-side IDs in sync via env so dedupe with CAPI works.
-      var _misterbPixelId = "%VITE_META_PIXEL_ID%";
-      if (_misterbPixelId && _misterbPixelId.indexOf("%") !== 0) {
+      // Pixel ID is injected at REQUEST time by the server from META_PIXEL_ID
+      // (see server/_core/htmlEnv.ts). The {{META_PIXEL_ID}} marker is left
+      // untouched by Vite at build time, so changing the Railway variable +
+      // restarting updates the browser pixel with NO rebuild. The same env var
+      // drives the server CAPI, keeping browser ↔ CAPI dedupe in sync.
+      var _misterbPixelId = "{{META_PIXEL_ID}}";
+      if (_misterbPixelId && _misterbPixelId.indexOf("{") !== 0) {
         !function(f,b,e,v,n,t,s)
         {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
         n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -55,7 +58,7 @@
       }
     </script>
     <noscript><img height="1" width="1" style="display:none"
-      src="https://www.facebook.com/tr?id=%VITE_META_PIXEL_ID%&ev=PageView&noscript=1"
+      src="https://www.facebook.com/tr?id={{META_PIXEL_ID}}&ev=PageView&noscript=1"
     /></noscript>
     <!-- End Meta Pixel Code -->
     <script type="text/javascript">
